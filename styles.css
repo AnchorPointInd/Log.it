@@ -84,6 +84,24 @@ button {
   margin-bottom: 18px;
 }
 
+.auth-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.auth-panel form {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-panel .entry-meta {
+  overflow-wrap: anywhere;
+}
+
 .nav-item, .button, .icon-button {
   border: 1px solid var(--line);
   color: var(--text);
