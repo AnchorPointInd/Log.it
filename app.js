@@ -1,4 +1,5 @@
 const STORE_KEY = "jtac-logbook-web-v1";
+const PENDING_PROFILE_KEY = "jtac-logbook-pending-profile-v1";
 const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_pPG2UaFree6CgIyFB5UAIA_bL6nLKqD";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -23,6 +24,10 @@ let activeView = "dashboard";
 let selectedMarks = new Set();
 let selectedConstraints = new Set();
 let currentUser = null;
+let isAdmin = false;
+let adminProfiles = [];
+let adminControls = [];
+let authMode = "signIn";
 let syncStatus = "Sign in to sync controls.";
 let filterState = {
   search: "",
@@ -160,6 +165,7 @@ function verificationText(entry) {
 function dbControlToEntry(row) {
   return {
     id: row.id,
+    userId: row.user_id,
     date: row.date,
     location: row.location || "",
     exerciseOperation: row.exercise_operation || "",
@@ -208,9 +214,12 @@ function entryToDbControl(entry) {
 function dbProfileToState(row) {
   if (!row) return {};
   return {
+    email: row.email || "",
     name: row.name || "",
     rank: row.rank || "",
     serviceNumber: row.service_number || "",
+    formationSeniorRequested: Boolean(row.formation_senior_requested),
+    formationSeniorRequestedAt: row.formation_senior_requested_at || "",
     unit: row.unit || "",
     capbadge: row.capbadge || "",
     qualification: row.qualification || "",
@@ -223,11 +232,17 @@ function dbProfileToState(row) {
 }
 
 function stateProfileToDb(profile) {
+  const formationSeniorRequested = Boolean(profile.formationSeniorRequested);
   return {
     user_id: currentUser.id,
+    email: currentUser.email || profile.email || "",
     name: profile.name || "",
     rank: profile.rank || "",
     service_number: profile.serviceNumber || "",
+    formation_senior_requested: formationSeniorRequested,
+    formation_senior_requested_at: formationSeniorRequested
+      ? (profile.formationSeniorRequestedAt || new Date().toISOString())
+      : null,
     unit: profile.unit || "",
     capbadge: profile.capbadge || "",
     qualification: profile.qualification || "",
@@ -240,20 +255,95 @@ function stateProfileToDb(profile) {
   };
 }
 
+function loadPendingProfile(email) {
+  try {
+    const pending = JSON.parse(localStorage.getItem(PENDING_PROFILE_KEY)) || {};
+    return pending[email.toLowerCase()] || null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingProfile(email, profile) {
+  try {
+    const pending = JSON.parse(localStorage.getItem(PENDING_PROFILE_KEY)) || {};
+    pending[email.toLowerCase()] = profile;
+    localStorage.setItem(PENDING_PROFILE_KEY, JSON.stringify(pending));
+  } catch {
+    // Local profile recovery is best-effort only.
+  }
+}
+
+function clearPendingProfile(email) {
+  try {
+    const pending = JSON.parse(localStorage.getItem(PENDING_PROFILE_KEY)) || {};
+    delete pending[email.toLowerCase()];
+    localStorage.setItem(PENDING_PROFILE_KEY, JSON.stringify(pending));
+  } catch {
+    // No action required.
+  }
+}
+
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
+
+function profileFromUserMetadata(user) {
+  const metadata = user?.user_metadata || {};
+  const formationSeniorRequested = Boolean(metadata.formationSeniorRequested);
+  return {
+    email: user?.email || "",
+    rank: metadata.rank || "",
+    name: metadata.name || "",
+    serviceNumber: metadata.serviceNumber || "",
+    formationSeniorRequested,
+    formationSeniorRequestedAt: formationSeniorRequested
+      ? (metadata.formationSeniorRequestedAt || new Date().toISOString())
+      : ""
+  };
+}
+
 async function loadRemoteState() {
   if (!currentUser) return;
   setStatus("Loading account data...");
-  const [{ data: profile, error: profileError }, { data: controls, error: controlsError }] = await Promise.all([
+  const [{ data: profile, error: profileError }, { data: controls, error: controlsError }, { data: adminRow, error: adminError }] = await Promise.all([
     supabaseClient.from("profiles").select("*").eq("user_id", currentUser.id).maybeSingle(),
-    supabaseClient.from("controls").select("*").order("date", { ascending: false })
+    supabaseClient.from("controls").select("*").eq("user_id", currentUser.id).order("date", { ascending: false }),
+    supabaseClient.from("app_admins").select("user_id").eq("user_id", currentUser.id).maybeSingle()
   ]);
   if (profileError) throw profileError;
   if (controlsError) throw controlsError;
+  if (adminError) throw adminError;
+  isAdmin = Boolean(adminRow);
   state.profile = dbProfileToState(profile);
+  if (!profile) {
+    const pendingProfile = loadPendingProfile(currentUser.email || "") || profileFromUserMetadata(currentUser);
+    if (pendingProfile) {
+      state.profile = pendingProfile;
+      await saveRemoteProfile();
+      clearPendingProfile(currentUser.email || "");
+    }
+  }
   state.entries = (controls || []).map(dbControlToEntry);
+  if (isAdmin) await loadAdminData();
+  else {
+    adminProfiles = [];
+    adminControls = [];
+  }
   saveState();
   setStatus(`Signed in as ${currentUser.email}.`);
   render();
+}
+
+async function loadAdminData() {
+  const [{ data: profiles, error: profilesError }, { data: controls, error: controlsError }] = await Promise.all([
+    supabaseClient.from("profiles").select("*").order("formation_senior_requested", { ascending: false }).order("updated_at", { ascending: false }),
+    supabaseClient.from("controls").select("*").order("date", { ascending: false })
+  ]);
+  if (profilesError) throw profilesError;
+  if (controlsError) throw controlsError;
+  adminProfiles = profiles || [];
+  adminControls = controls || [];
 }
 
 async function saveRemoteProfile() {
@@ -296,6 +386,10 @@ async function bootstrapAuth() {
     currentUser = session?.user || null;
     if (currentUser) loadRemoteState().catch((error) => setStatus(error.message));
     else {
+      isAdmin = false;
+      adminProfiles = [];
+      adminControls = [];
+      activeView = "dashboard";
       state = loadState();
       setStatus("Signed out.");
       render();
@@ -304,6 +398,14 @@ async function bootstrapAuth() {
 }
 
 function render() {
+  document.body.classList.toggle("signed-out", !currentUser);
+  document.body.classList.toggle("is-admin", Boolean(isAdmin));
+  if (!currentUser) {
+    renderSignedOut();
+    renderAuthPanel();
+    return;
+  }
+  if (activeView === "admin" && !isAdmin) activeView = "dashboard";
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === activeView));
   $$(".view").forEach((view) => view.classList.remove("active"));
   $(`#${activeView}View`).classList.add("active");
@@ -312,31 +414,64 @@ function render() {
   renderCurrency();
   renderReports();
   renderSettings();
+  renderAdmin();
   renderAuthPanel();
+}
+
+function signupFieldsHTML() {
+  if (authMode !== "signUp") return "";
+  return `
+    <div class="signup-fields">
+      <div class="form-grid">
+        <label>Rank<input id="signupRank" autocomplete="honorific-prefix" required></label>
+        <label>Name<input id="signupName" autocomplete="name" required></label>
+        <label>Service Number<input id="signupServiceNumber" autocomplete="off" required></label>
+      </div>
+      <label class="check-row"><input id="signupFormationSenior" type="checkbox"> Request formation senior access</label>
+    </div>`;
+}
+
+function renderSignedOut() {
+  $$(".view").forEach((view) => view.classList.remove("active"));
+  $("#dashboardView").classList.add("active");
+  $("#dashboardView").innerHTML = `
+    <div class="auth-screen">
+      <section class="auth-card">
+        <div>
+          <p class="eyebrow">JTAC Logbook</p>
+          <h1>Account Access</h1>
+        </div>
+        <div class="auth-mode-tabs">
+          <button class="button ${authMode === "signIn" ? "active" : "secondary"}" type="button" data-auth-mode="signIn">Sign In</button>
+          <button class="button ${authMode === "signUp" ? "active" : "secondary"}" type="button" data-auth-mode="signUp">Create Account</button>
+        </div>
+        <form id="authForm" class="stack">
+          <div class="form-grid">
+            <label>Email<input id="authEmail" type="email" autocomplete="username" required></label>
+            <label>Password<input id="authPassword" type="password" autocomplete="${authMode === "signUp" ? "new-password" : "current-password"}" minlength="6" required></label>
+          </div>
+          ${signupFieldsHTML()}
+          <button class="button primary" type="submit" data-auth="${authMode}">${authMode === "signUp" ? "Create Account" : "Sign In"}</button>
+        </form>
+        <p class="entry-meta">${escapeHTML(syncStatus)}</p>
+      </section>
+    </div>`;
 }
 
 function renderAuthPanel() {
   const panel = $("#authPanel");
   if (!panel) return;
+  if (!currentUser) {
+    panel.innerHTML = "";
+    return;
+  }
   if (currentUser) {
     panel.innerHTML = `
       <p class="section-label">Account</p>
       <p class="entry-meta">${escapeHTML(currentUser.email)}</p>
       <p class="entry-meta">${escapeHTML(syncStatus)}</p>
       <button class="button secondary" data-action="signOut">Sign Out</button>`;
-    return;
   }
-  panel.innerHTML = `
-    <p class="section-label">Account</p>
-    <form id="authForm">
-      <input id="authEmail" type="email" placeholder="Email" required>
-      <input id="authPassword" type="password" placeholder="Password" minlength="6" required>
-      <div class="toolbar">
-        <button class="button primary" type="submit" data-auth="signIn">Sign In</button>
-        <button class="button secondary" type="submit" data-auth="signUp">Sign Up</button>
-      </div>
-    </form>
-    <p class="entry-meta">${escapeHTML(syncStatus)}</p>`;
 }
 
 function renderHeader(title, actions = "") {
@@ -494,6 +629,8 @@ function renderSettings() {
           ${profileInput("capbadge", "Capbadge", profile.capbadge)}
           <label>JTAC Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses, profile.qualification)}</select></label>
         </div>
+        <label class="check-row"><input name="formationSeniorRequested" type="checkbox" value="true" ${profile.formationSeniorRequested ? "checked" : ""}> Request formation senior access</label>
+        <p class="entry-meta">${profile.formationSeniorRequested ? `Request submitted${profile.formationSeniorRequestedAt ? ` ${shortDate(profile.formationSeniorRequestedAt)}` : ""}.` : "Formation senior access is reviewed by an admin."}</p>
       </section>
       <section class="panel stack">
         <p class="section-label">Currency Dates</p>
@@ -515,6 +652,58 @@ function renderSettings() {
         <p class="entry-meta">${currentUser ? "Data is synced to this signed-in Supabase account. Export a JSON backup before major changes." : "Sign in to sync data to your account. Unsigned data is stored in this browser only."}</p>
       </section>
     </form>`;
+}
+
+function renderAdmin() {
+  if (!isAdmin) {
+    $("#adminView").innerHTML = "";
+    return;
+  }
+  const controlsByUser = adminControls.reduce((counts, control) => {
+    counts[control.user_id] = (counts[control.user_id] || 0) + 1;
+    return counts;
+  }, {});
+  const profilesByUser = new Map(adminProfiles.map((profile) => [profile.user_id, profile]));
+  const accountRows = adminProfiles.map((profile) => `
+    <article class="entry-row">
+      <div class="date-box"><strong>${controlsByUser[profile.user_id] || 0}</strong><span>CTRL</span></div>
+      <div>
+        <p class="entry-title">${escapeHTML([profile.rank, profile.name].filter(Boolean).join(" ") || profile.email || "Unnamed account")}</p>
+        <div class="entry-meta">${escapeHTML([profile.email, profile.service_number].filter(Boolean).join(" | "))}</div>
+        <div class="pill-row">
+          <span class="pill">${profile.formation_senior_requested ? "Formation senior requested" : "Standard access"}</span>
+          ${profile.formation_senior_requested_at ? `<span class="pill">${shortDate(profile.formation_senior_requested_at)}</span>` : ""}
+        </div>
+      </div>
+    </article>`).join("");
+  const recentControls = adminControls.slice(0, 12).map((control) => {
+    const profile = profilesByUser.get(control.user_id) || {};
+    return `
+      <article class="entry-row">
+        <div class="date-box"><strong>${dayLabel(control.date)}</strong><span>${monthLabel(control.date)}</span></div>
+        <div>
+          <p class="entry-title">${escapeHTML(control.location || "Unknown location")}</p>
+          <div class="entry-meta">${escapeHTML([profile.rank, profile.name, control.control_type, control.aircraft?.[0]?.type].filter(Boolean).join(" | "))}</div>
+        </div>
+      </article>`;
+  }).join("");
+  $("#adminView").innerHTML = `
+    ${renderHeader("Admin")}
+    <div class="stack">
+      <section class="grid three">
+        ${metric("Accounts", adminProfiles.length)}
+        ${metric("Senior requests", adminProfiles.filter((profile) => profile.formation_senior_requested).length)}
+        ${metric("Controls", adminControls.length)}
+      </section>
+      <section class="stack">
+        <p class="section-label">Accounts</p>
+        ${accountRows || `<div class="empty">No account profiles have been created yet.</div>`}
+      </section>
+      <section class="stack">
+        <p class="section-label">Recent controls</p>
+        ${recentControls || `<div class="empty">No controls have been logged yet.</div>`}
+      </section>
+    </div>`;
 }
 
 function profileInput(name, label, value = "", type = "text") {
@@ -709,8 +898,14 @@ function entryFromHTMLCells(cells) {
 }
 
 function saveProfile() {
+  const previousProfile = state.profile || {};
   const data = new FormData($("#profileForm"));
   state.profile = Object.fromEntries(data.entries());
+  state.profile.email = currentUser?.email || state.profile.email || "";
+  state.profile.formationSeniorRequested = data.get("formationSeniorRequested") === "true";
+  state.profile.formationSeniorRequestedAt = state.profile.formationSeniorRequested
+    ? (previousProfile.formationSeniorRequestedAt || new Date().toISOString())
+    : "";
   saveState();
   if (currentUser) saveRemoteProfile().catch((error) => setStatus(error.message));
 }
@@ -751,6 +946,11 @@ document.addEventListener("click", async (event) => {
   const target = event.target.closest("button");
   if (!target) return;
   if (target.closest("#authForm")) return;
+  if (target.dataset.authMode) {
+    authMode = target.dataset.authMode;
+    render();
+    return;
+  }
   if (target.dataset.view) activeView = target.dataset.view;
   if (target.dataset.nav) activeView = target.dataset.nav;
   if (target.dataset.action === "add" || target.id === "quickAdd") openEntryDialog();
@@ -792,16 +992,61 @@ document.addEventListener("input", (event) => {
 document.addEventListener("submit", async (event) => {
   if (event.target.id !== "authForm") return;
   event.preventDefault();
-  const submitter = event.submitter;
-  const email = $("#authEmail").value.trim();
+  const email = normalizeEmail($("#authEmail").value);
   const password = $("#authPassword").value;
-  setStatus(submitter?.dataset.auth === "signUp" ? "Creating account..." : "Signing in...");
-  const result = submitter?.dataset.auth === "signUp"
-    ? await supabaseClient.auth.signUp({ email, password })
-    : await supabaseClient.auth.signInWithPassword({ email, password });
-  if (result.error) setStatus(result.error.message);
-  else if (submitter?.dataset.auth === "signUp" && !result.data.session) setStatus("Check your email to confirm the account, then sign in.");
-  else setStatus("Signed in.");
+  const isSignUp = authMode === "signUp";
+  let profile = null;
+  if (isSignUp) {
+    const formationSeniorRequested = $("#signupFormationSenior").checked;
+    profile = {
+      email,
+      rank: $("#signupRank").value.trim(),
+      name: $("#signupName").value.trim(),
+      serviceNumber: $("#signupServiceNumber").value.trim(),
+      formationSeniorRequested,
+      formationSeniorRequestedAt: formationSeniorRequested ? new Date().toISOString() : ""
+    };
+    if (!profile.rank || !profile.name || !profile.serviceNumber) {
+      setStatus("Rank, name and service number are required.");
+      return;
+    }
+    savePendingProfile(email, profile);
+  }
+  try {
+    setStatus(isSignUp ? "Creating account..." : "Signing in...");
+    const result = isSignUp
+      ? await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: profile }
+      })
+      : await supabaseClient.auth.signInWithPassword({ email, password });
+    if (result.error) {
+      setStatus(result.error.message);
+      return;
+    }
+    if (isSignUp && result.data.session && result.data.user) {
+      currentUser = result.data.user;
+      state.profile = profile;
+      await saveRemoteProfile();
+      clearPendingProfile(email);
+      setStatus("Account created.");
+      await loadRemoteState();
+      return;
+    }
+    if (isSignUp && !result.data.session) {
+      setStatus("Account created. Check your email to confirm it, then sign in to finish storing your profile.");
+      return;
+    }
+    if (result.data.session && result.data.user) {
+      currentUser = result.data.user;
+      await loadRemoteState();
+      return;
+    }
+    setStatus("Unable to sign in. Check the email and password.");
+  } catch (error) {
+    setStatus(error.message || "Account action failed.");
+  }
 });
 
 $("#entryForm").addEventListener("submit", (event) => {
