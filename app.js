@@ -1,5 +1,6 @@
 const STORE_KEY = "jtac-logbook-web-v1";
 const PENDING_PROFILE_KEY = "jtac-logbook-pending-profile-v1";
+const USERNAME_AUTH_DOMAIN = "jtac-logbook.local";
 const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_pPG2UaFree6CgIyFB5UAIA_bL6nLKqD";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -61,6 +62,8 @@ function saveState() {
 
 function setStatus(message) {
   syncStatus = message;
+  const authStatus = $("#authStatus");
+  if (authStatus) authStatus.textContent = message;
   renderAuthPanel();
 }
 
@@ -235,7 +238,7 @@ function stateProfileToDb(profile) {
   const formationSeniorRequested = Boolean(profile.formationSeniorRequested);
   return {
     user_id: currentUser.id,
-    email: currentUser.email || profile.email || "",
+    email: displayIdentifierFromUser(currentUser) || profile.email || "",
     name: profile.name || "",
     rank: profile.rank || "",
     service_number: profile.serviceNumber || "",
@@ -284,15 +287,30 @@ function clearPendingProfile(email) {
   }
 }
 
-function normalizeEmail(value) {
+function normalizeAuthIdentifier(value) {
   return value.trim().toLowerCase();
+}
+
+function authEmailFromIdentifier(value) {
+  const identifier = normalizeAuthIdentifier(value);
+  return identifier.includes("@") ? identifier : `${identifier}@${USERNAME_AUTH_DOMAIN}`;
+}
+
+function isValidAuthIdentifier(value) {
+  const identifier = normalizeAuthIdentifier(value);
+  return identifier.includes("@") || /^[a-z0-9][a-z0-9._-]{0,62}$/.test(identifier);
+}
+
+function displayIdentifierFromUser(user) {
+  const email = user?.email || "";
+  return email.endsWith(`@${USERNAME_AUTH_DOMAIN}`) ? email.slice(0, -USERNAME_AUTH_DOMAIN.length - 1) : email;
 }
 
 function profileFromUserMetadata(user) {
   const metadata = user?.user_metadata || {};
   const formationSeniorRequested = Boolean(metadata.formationSeniorRequested);
   return {
-    email: user?.email || "",
+    email: displayIdentifierFromUser(user),
     rank: metadata.rank || "",
     name: metadata.name || "",
     serviceNumber: metadata.serviceNumber || "",
@@ -331,7 +349,7 @@ async function loadRemoteState() {
     adminControls = [];
   }
   saveState();
-  setStatus(`Signed in as ${currentUser.email}.`);
+  setStatus(`Signed in as ${displayIdentifierFromUser(currentUser)}.`);
   render();
 }
 
@@ -453,7 +471,7 @@ function renderSignedOut() {
           ${signupFieldsHTML()}
           <button class="button primary" type="submit" data-auth="${authMode}">${authMode === "signUp" ? "Create Account" : "Sign In"}</button>
         </form>
-        <p class="entry-meta">${escapeHTML(syncStatus)}</p>
+        <p class="entry-meta" id="authStatus">${escapeHTML(syncStatus)}</p>
       </section>
     </div>`;
 }
@@ -468,7 +486,7 @@ function renderAuthPanel() {
   if (currentUser) {
     panel.innerHTML = `
       <p class="section-label">Account</p>
-      <p class="entry-meta">${escapeHTML(currentUser.email)}</p>
+      <p class="entry-meta">${escapeHTML(displayIdentifierFromUser(currentUser))}</p>
       <p class="entry-meta">${escapeHTML(syncStatus)}</p>
       <button class="button secondary" data-action="signOut">Sign Out</button>`;
   }
@@ -901,7 +919,7 @@ function saveProfile() {
   const previousProfile = state.profile || {};
   const data = new FormData($("#profileForm"));
   state.profile = Object.fromEntries(data.entries());
-  state.profile.email = currentUser?.email || state.profile.email || "";
+  state.profile.email = displayIdentifierFromUser(currentUser) || state.profile.email || "";
   state.profile.formationSeniorRequested = data.get("formationSeniorRequested") === "true";
   state.profile.formationSeniorRequestedAt = state.profile.formationSeniorRequested
     ? (previousProfile.formationSeniorRequestedAt || new Date().toISOString())
@@ -992,14 +1010,19 @@ document.addEventListener("input", (event) => {
 document.addEventListener("submit", async (event) => {
   if (event.target.id !== "authForm") return;
   event.preventDefault();
-  const email = normalizeEmail($("#authEmail").value);
+  const identifier = normalizeAuthIdentifier($("#authEmail").value);
+  if (!isValidAuthIdentifier(identifier)) {
+    setStatus("Use letters, numbers, dots, hyphens or underscores for username.");
+    return;
+  }
+  const email = authEmailFromIdentifier(identifier);
   const password = $("#authPassword").value;
   const isSignUp = authMode === "signUp";
   let profile = null;
   if (isSignUp) {
     const formationSeniorRequested = $("#signupFormationSenior").checked;
     profile = {
-      email,
+      email: identifier,
       rank: $("#signupRank").value.trim(),
       name: $("#signupName").value.trim(),
       serviceNumber: $("#signupServiceNumber").value.trim(),
@@ -1035,7 +1058,7 @@ document.addEventListener("submit", async (event) => {
       return;
     }
     if (isSignUp && !result.data.session) {
-      setStatus("Account created. Check your email to confirm it, then sign in to finish storing your profile.");
+      setStatus("Account created. If sign-in is blocked, ask an admin to confirm the account in Supabase.");
       return;
     }
     if (result.data.session && result.data.user) {
