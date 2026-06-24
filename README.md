@@ -8,7 +8,9 @@ Use the live app here:
 
 [https://anchorpointind.github.io/Log.it/](https://anchorpointind.github.io/Log.it/)
 
-The web app supports email/password accounts and stores signed-in users' controls in Supabase. Settings -> Export Data / Backup remains available for a local JSON backup.
+The web app opens on an email/password account screen and stores signed-in users' controls in Supabase. New account requests collect rank, name, service number and an optional formation senior access request for admin review. Settings -> Export Data / Backup remains available for a local JSON backup.
+
+Admin visibility is controlled in Supabase through the `app_admins` table. Add the admin user's Supabase auth `user_id` to that table after the admin account has been created.
 
 ## Local Development
 
