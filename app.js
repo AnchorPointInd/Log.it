@@ -447,7 +447,7 @@ function renderSignedOut() {
         </div>
         <form id="authForm" class="stack">
           <div class="form-grid">
-            <label>Email<input id="authEmail" type="email" autocomplete="username" required></label>
+            <label>Username<input id="authEmail" type="text" autocomplete="username" required></label>
             <label>Password<input id="authPassword" type="password" autocomplete="${authMode === "signUp" ? "new-password" : "current-password"}" minlength="6" required></label>
           </div>
           ${signupFieldsHTML()}
