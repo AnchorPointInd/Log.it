@@ -284,6 +284,10 @@ function clearPendingProfile(email) {
   }
 }
 
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
+
 function profileFromUserMetadata(user) {
   const metadata = user?.user_metadata || {};
   const formationSeniorRequested = Boolean(metadata.formationSeniorRequested);
@@ -443,7 +447,7 @@ function renderSignedOut() {
         </div>
         <form id="authForm" class="stack">
           <div class="form-grid">
-            <label>Username<input id="authEmail" type="text" autocomplete="username" required></label>
+            <label>Email<input id="authEmail" type="email" autocomplete="username" required></label>
             <label>Password<input id="authPassword" type="password" autocomplete="${authMode === "signUp" ? "new-password" : "current-password"}" minlength="6" required></label>
           </div>
           ${signupFieldsHTML()}
@@ -988,7 +992,7 @@ document.addEventListener("input", (event) => {
 document.addEventListener("submit", async (event) => {
   if (event.target.id !== "authForm") return;
   event.preventDefault();
-  const email = $("#authEmail").value.trim();
+  const email = normalizeEmail($("#authEmail").value);
   const password = $("#authPassword").value;
   const isSignUp = authMode === "signUp";
   let profile = null;
@@ -1008,32 +1012,41 @@ document.addEventListener("submit", async (event) => {
     }
     savePendingProfile(email, profile);
   }
-  setStatus(isSignUp ? "Creating account..." : "Signing in...");
-  const result = isSignUp
-    ? await supabaseClient.auth.signUp({
-      email,
-      password,
-      options: { data: profile }
-    })
-    : await supabaseClient.auth.signInWithPassword({ email, password });
-  if (result.error) {
-    setStatus(result.error.message);
-    return;
+  try {
+    setStatus(isSignUp ? "Creating account..." : "Signing in...");
+    const result = isSignUp
+      ? await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: profile }
+      })
+      : await supabaseClient.auth.signInWithPassword({ email, password });
+    if (result.error) {
+      setStatus(result.error.message);
+      return;
+    }
+    if (isSignUp && result.data.session && result.data.user) {
+      currentUser = result.data.user;
+      state.profile = profile;
+      await saveRemoteProfile();
+      clearPendingProfile(email);
+      setStatus("Account created.");
+      await loadRemoteState();
+      return;
+    }
+    if (isSignUp && !result.data.session) {
+      setStatus("Account created. Check your email to confirm it, then sign in to finish storing your profile.");
+      return;
+    }
+    if (result.data.session && result.data.user) {
+      currentUser = result.data.user;
+      await loadRemoteState();
+      return;
+    }
+    setStatus("Unable to sign in. Check the email and password.");
+  } catch (error) {
+    setStatus(error.message || "Account action failed.");
   }
-  if (isSignUp && result.data.session && result.data.user) {
-    currentUser = result.data.user;
-    state.profile = profile;
-    await saveRemoteProfile();
-    clearPendingProfile(email);
-    setStatus("Account created.");
-    await loadRemoteState();
-    return;
-  }
-  if (isSignUp && !result.data.session) {
-    setStatus("Check your email to confirm the account, then sign in.");
-    return;
-  }
-  setStatus("Signed in.");
 });
 
 $("#entryForm").addEventListener("submit", (event) => {
