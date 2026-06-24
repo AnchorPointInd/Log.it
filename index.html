@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b0d0f">
+    <title>JTAC Logbook</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">+</div>
+          <div>
+            <h1>JTAC Logbook</h1>
+            <p>Record. Track. Maintain Currency.</p>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Primary">
+          <button class="nav-item active" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" data-view="logbook">Logbook</button>
+          <button class="nav-item" data-view="currency">Currency</button>
+          <button class="nav-item" data-view="reports">Reports</button>
+          <button class="nav-item" data-view="settings">Settings</button>
+        </nav>
+        <button class="button primary" id="quickAdd">+ Add Control</button>
+      </aside>
+
+      <main class="content">
+        <section class="view active" id="dashboardView"></section>
+        <section class="view" id="logbookView"></section>
+        <section class="view" id="currencyView"></section>
+        <section class="view" id="reportsView"></section>
+        <section class="view" id="settingsView"></section>
+      </main>
+    </div>
+
+    <dialog id="entryDialog" class="dialog">
+      <form id="entryForm" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">Control Record</p>
+            <h2 id="entryDialogTitle">Add Control</h2>
+          </div>
+          <button class="icon-button" type="button" data-action="closeDialog" aria-label="Close">x</button>
+        </div>
+        <input type="hidden" id="entryId">
+        <div class="form-grid">
+          <label>Date and time<input id="entryDate" type="datetime-local" required></label>
+          <label>Location<input id="entryLocation" required autocomplete="off"></label>
+          <label>Exercise / Operation<input id="entryExercise" autocomplete="off"></label>
+          <label>Aircraft type<input id="entryAircraftType" required autocomplete="off"></label>
+          <label>Aircraft quantity<input id="entryAircraftQty" type="number" min="1" max="24" value="1"></label>
+          <label>Nationality<input id="entryAircraftNationality" maxlength="3" value="GBR"></label>
+          <label>Ordnance type<input id="entryOrdnanceType" autocomplete="off"></label>
+          <label>Ordnance quantity<input id="entryOrdnanceQty" type="number" min="1" max="99" value="1"></label>
+          <label>Outcome<select id="entrySuccessful"><option value="true">Successful</option><option value="false">Unsuccessful</option></select></label>
+          <label>Environment<select id="entryEnvironment"></select></label>
+          <label>Type of control<select id="entryControlType"></select></label>
+          <label>Method of attack<select id="entryAttackMethod"></select></label>
+          <label>Aircraft category<select id="entryAircraftCategory"></select></label>
+          <label>Controller status<select id="entryControllerStatus"></select></label>
+          <label>Verifier name<input id="entryVerifierName" autocomplete="off"></label>
+          <label>Verifier rank<input id="entryVerifierRank" autocomplete="off"></label>
+          <label>Verifier appointment<input id="entryVerifierAppointment" autocomplete="off"></label>
+          <label>Verification date<input id="entryVerificationDate" type="date"></label>
+        </div>
+        <label class="full-field">Notes<textarea id="entryNotes" rows="3"></textarea></label>
+        <div class="tag-section">
+          <p class="section-label">Marks</p>
+          <div class="tag-grid" id="marksPicker"></div>
+        </div>
+        <div class="tag-section">
+          <p class="section-label">Constraints</p>
+          <div class="tag-grid" id="constraintsPicker"></div>
+        </div>
+        <label class="check-row"><input id="entryCmp" type="checkbox"> CMP</label>
+        <div class="dialog-actions">
+          <button class="button ghost" id="deleteEntry" type="button">Delete</button>
+          <button class="button secondary" type="button" data-action="closeDialog">Cancel</button>
+          <button class="button primary" id="saveEntry" type="submit">Save Control</button>
+        </div>
+      </form>
+    </dialog>
+
+    <input id="fileImport" type="file" accept=".json,.html,.htm" hidden>
+    <script src="app.js"></script>
+  </body>
+</html>
