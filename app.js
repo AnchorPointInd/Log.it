@@ -1,4 +1,7 @@
 const STORE_KEY = "jtac-logbook-web-v1";
+const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
+const SUPABASE_KEY = "sb_publishable_pPG2UaFree6CgIyFB5UAIA_bL6nLKqD";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const OPTIONS = {
   environments: ["Ground", "Airborne", "Simulator"],
@@ -19,6 +22,8 @@ let state = loadState();
 let activeView = "dashboard";
 let selectedMarks = new Set();
 let selectedConstraints = new Set();
+let currentUser = null;
+let syncStatus = "Sign in to sync controls.";
 let filterState = {
   search: "",
   type: "",
@@ -47,6 +52,19 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+}
+
+function setStatus(message) {
+  syncStatus = message;
+  renderAuthPanel();
+}
+
+function requireUser() {
+  if (!currentUser) {
+    setStatus("Sign in before saving controls.");
+    return false;
+  }
+  return true;
 }
 
 function uid() {
@@ -139,6 +157,152 @@ function verificationText(entry) {
   return entry.verification && entry.verification.name ? "Verified" : "Unverified";
 }
 
+function dbControlToEntry(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    location: row.location || "",
+    exerciseOperation: row.exercise_operation || "",
+    notes: row.notes || "",
+    successful: row.successful,
+    environment: row.environment,
+    controlType: row.control_type,
+    attackMethod: row.attack_method,
+    aircraftCategory: row.aircraft_category,
+    marks: row.marks || [],
+    constraints: row.constraints || [],
+    cmp: row.cmp,
+    controllerStatus: row.controller_status,
+    aircraft: row.aircraft || [],
+    ordnance: row.ordnance || [],
+    verification: row.verification,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function entryToDbControl(entry) {
+  return {
+    id: entry.id,
+    user_id: currentUser.id,
+    date: entry.date,
+    location: entry.location,
+    exercise_operation: entry.exerciseOperation || "",
+    notes: entry.notes || "",
+    successful: entry.successful,
+    environment: entry.environment,
+    control_type: entry.controlType,
+    attack_method: entry.attackMethod,
+    aircraft_category: entry.aircraftCategory,
+    marks: entry.marks || [],
+    constraints: entry.constraints || [],
+    cmp: Boolean(entry.cmp),
+    controller_status: entry.controllerStatus,
+    aircraft: entry.aircraft || [],
+    ordnance: entry.ordnance || [],
+    verification: entry.verification || null,
+    updated_at: new Date().toISOString()
+  };
+}
+
+function dbProfileToState(row) {
+  if (!row) return {};
+  return {
+    name: row.name || "",
+    rank: row.rank || "",
+    serviceNumber: row.service_number || "",
+    unit: row.unit || "",
+    capbadge: row.capbadge || "",
+    qualification: row.qualification || "",
+    initialQualificationDate: row.initial_qualification_date || "",
+    pmsTrainingDate: row.pms_training_date || "",
+    pmsProficiencyDate: row.pms_proficiency_date || "",
+    annualEvaluationDate: row.annual_evaluation_date || "",
+    evaluationWaiverNumber: row.evaluation_waiver_number || ""
+  };
+}
+
+function stateProfileToDb(profile) {
+  return {
+    user_id: currentUser.id,
+    name: profile.name || "",
+    rank: profile.rank || "",
+    service_number: profile.serviceNumber || "",
+    unit: profile.unit || "",
+    capbadge: profile.capbadge || "",
+    qualification: profile.qualification || "",
+    initial_qualification_date: profile.initialQualificationDate || null,
+    pms_training_date: profile.pmsTrainingDate || null,
+    pms_proficiency_date: profile.pmsProficiencyDate || null,
+    annual_evaluation_date: profile.annualEvaluationDate || null,
+    evaluation_waiver_number: profile.evaluationWaiverNumber || "",
+    updated_at: new Date().toISOString()
+  };
+}
+
+async function loadRemoteState() {
+  if (!currentUser) return;
+  setStatus("Loading account data...");
+  const [{ data: profile, error: profileError }, { data: controls, error: controlsError }] = await Promise.all([
+    supabaseClient.from("profiles").select("*").eq("user_id", currentUser.id).maybeSingle(),
+    supabaseClient.from("controls").select("*").order("date", { ascending: false })
+  ]);
+  if (profileError) throw profileError;
+  if (controlsError) throw controlsError;
+  state.profile = dbProfileToState(profile);
+  state.entries = (controls || []).map(dbControlToEntry);
+  saveState();
+  setStatus(`Signed in as ${currentUser.email}.`);
+  render();
+}
+
+async function saveRemoteProfile() {
+  if (!currentUser) return;
+  const { error } = await supabaseClient.from("profiles").upsert(stateProfileToDb(state.profile), { onConflict: "user_id" });
+  if (error) throw error;
+  setStatus("Profile synced.");
+}
+
+async function saveRemoteEntry(entry) {
+  const { error } = await supabaseClient.from("controls").upsert(entryToDbControl(entry), { onConflict: "id" });
+  if (error) throw error;
+  setStatus("Control synced.");
+}
+
+async function deleteRemoteEntry(id) {
+  const { error } = await supabaseClient.from("controls").delete().eq("id", id);
+  if (error) throw error;
+  setStatus("Control deleted.");
+}
+
+async function bootstrapAuth() {
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) {
+    setStatus(error.message);
+    return;
+  }
+  currentUser = data.session?.user || null;
+  renderAuthPanel();
+  if (currentUser) {
+    try {
+      await loadRemoteState();
+    } catch (error) {
+      setStatus(error.message || "Unable to load account data.");
+    }
+  } else {
+    render();
+  }
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user || null;
+    if (currentUser) loadRemoteState().catch((error) => setStatus(error.message));
+    else {
+      state = loadState();
+      setStatus("Signed out.");
+      render();
+    }
+  });
+}
+
 function render() {
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === activeView));
   $$(".view").forEach((view) => view.classList.remove("active"));
@@ -148,6 +312,31 @@ function render() {
   renderCurrency();
   renderReports();
   renderSettings();
+  renderAuthPanel();
+}
+
+function renderAuthPanel() {
+  const panel = $("#authPanel");
+  if (!panel) return;
+  if (currentUser) {
+    panel.innerHTML = `
+      <p class="section-label">Account</p>
+      <p class="entry-meta">${escapeHTML(currentUser.email)}</p>
+      <p class="entry-meta">${escapeHTML(syncStatus)}</p>
+      <button class="button secondary" data-action="signOut">Sign Out</button>`;
+    return;
+  }
+  panel.innerHTML = `
+    <p class="section-label">Account</p>
+    <form id="authForm">
+      <input id="authEmail" type="email" placeholder="Email" required>
+      <input id="authPassword" type="password" placeholder="Password" minlength="6" required>
+      <div class="toolbar">
+        <button class="button primary" type="submit" data-auth="signIn">Sign In</button>
+        <button class="button secondary" type="submit" data-auth="signUp">Sign Up</button>
+      </div>
+    </form>
+    <p class="entry-meta">${escapeHTML(syncStatus)}</p>`;
 }
 
 function renderHeader(title, actions = "") {
@@ -323,7 +512,7 @@ function renderSettings() {
           <button class="button secondary" type="button" data-action="export">Export Data / Backup</button>
           <button class="button ghost" type="button" data-action="deleteAll" ${state.entries.length ? "" : "disabled"}>Delete All Controls</button>
         </div>
-        <p class="entry-meta">Data is stored in this browser using localStorage. Export a JSON backup before clearing browser storage.</p>
+        <p class="entry-meta">${currentUser ? "Data is synced to this signed-in Supabase account. Export a JSON backup before major changes." : "Sign in to sync data to your account. Unsigned data is stored in this browser only."}</p>
       </section>
     </form>`;
 }
@@ -385,7 +574,8 @@ function openEntryDialog(entry = null) {
   $("#entryDialog").showModal();
 }
 
-function saveEntryFromForm() {
+async function saveEntryFromForm() {
+  if (!requireUser()) return;
   const id = $("#entryId").value || uid();
   const verifierName = $("#entryVerifierName").value.trim();
   const entry = {
@@ -423,13 +613,16 @@ function saveEntryFromForm() {
   const index = state.entries.findIndex((item) => item.id === id);
   if (index >= 0) state.entries[index] = entry;
   else state.entries.push({ ...entry, createdAt: new Date().toISOString() });
+  await saveRemoteEntry(entry);
   saveState();
   $("#entryDialog").close();
   render();
 }
 
-function deleteEntry(id) {
+async function deleteEntry(id) {
+  if (!requireUser()) return;
   state.entries = state.entries.filter((entry) => entry.id !== id);
+  await deleteRemoteEntry(id);
   saveState();
   $("#entryDialog").close();
   render();
@@ -464,9 +657,11 @@ function importArchive(file) {
         state.entries.push(...incoming);
         if (archive.profile) state.profile = archive.profile;
         saveState();
+        if (currentUser) syncAllLocalData().catch((error) => setStatus(error.message));
         alert(`Imported ${incoming.length} control${incoming.length === 1 ? "" : "s"}.`);
       } else {
         const imported = importHTMLLogbook(text);
+        if (currentUser) syncAllLocalData().catch((error) => setStatus(error.message));
         alert(`Imported ${imported} control${imported === 1 ? "" : "s"}.`);
       }
       render();
@@ -517,6 +712,17 @@ function saveProfile() {
   const data = new FormData($("#profileForm"));
   state.profile = Object.fromEntries(data.entries());
   saveState();
+  if (currentUser) saveRemoteProfile().catch((error) => setStatus(error.message));
+}
+
+async function syncAllLocalData() {
+  if (!currentUser) return;
+  setStatus("Syncing imported data...");
+  await saveRemoteProfile();
+  for (const entry of state.entries) {
+    await saveRemoteEntry(entry);
+  }
+  setStatus("Imported data synced.");
 }
 
 function generateReport(type) {
@@ -541,9 +747,10 @@ function generateReport(type) {
   window.print();
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const target = event.target.closest("button");
   if (!target) return;
+  if (target.closest("#authForm")) return;
   if (target.dataset.view) activeView = target.dataset.view;
   if (target.dataset.nav) activeView = target.dataset.nav;
   if (target.dataset.action === "add" || target.id === "quickAdd") openEntryDialog();
@@ -551,7 +758,14 @@ document.addEventListener("click", (event) => {
   if (target.dataset.action === "import") $("#fileImport").click();
   if (target.dataset.action === "export") exportData();
   if (target.dataset.action === "closeDialog") $("#entryDialog").close();
+  if (target.dataset.action === "signOut") {
+    await supabaseClient.auth.signOut();
+  }
   if (target.dataset.action === "deleteAll" && confirm("Delete all controls from this browser?")) {
+    if (currentUser) {
+      const { error } = await supabaseClient.from("controls").delete().eq("user_id", currentUser.id);
+      if (error) setStatus(error.message);
+    }
     state.entries = [];
     saveState();
   }
@@ -575,14 +789,29 @@ document.addEventListener("input", (event) => {
   if (event.target.dataset.kind === "constraint") event.target.checked ? selectedConstraints.add(event.target.value) : selectedConstraints.delete(event.target.value);
 });
 
+document.addEventListener("submit", async (event) => {
+  if (event.target.id !== "authForm") return;
+  event.preventDefault();
+  const submitter = event.submitter;
+  const email = $("#authEmail").value.trim();
+  const password = $("#authPassword").value;
+  setStatus(submitter?.dataset.auth === "signUp" ? "Creating account..." : "Signing in...");
+  const result = submitter?.dataset.auth === "signUp"
+    ? await supabaseClient.auth.signUp({ email, password })
+    : await supabaseClient.auth.signInWithPassword({ email, password });
+  if (result.error) setStatus(result.error.message);
+  else if (submitter?.dataset.auth === "signUp" && !result.data.session) setStatus("Check your email to confirm the account, then sign in.");
+  else setStatus("Signed in.");
+});
+
 $("#entryForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  saveEntryFromForm();
+  saveEntryFromForm().catch((error) => setStatus(error.message || "Unable to save control."));
 });
 
 $("#deleteEntry").addEventListener("click", () => {
   const id = $("#entryId").value;
-  if (id && confirm("Delete this control?")) deleteEntry(id);
+  if (id && confirm("Delete this control?")) deleteEntry(id).catch((error) => setStatus(error.message || "Unable to delete control."));
 });
 
 $("#fileImport").addEventListener("change", (event) => {
@@ -591,4 +820,4 @@ $("#fileImport").addEventListener("change", (event) => {
   event.target.value = "";
 });
 
-render();
+bootstrapAuth();
