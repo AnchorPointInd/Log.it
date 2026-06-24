@@ -134,17 +134,24 @@ button {
   display: none;
 }
 
+.signed-out .content {
+  display: grid;
+  min-height: 100vh;
+  padding: 0;
+}
+
 .auth-screen {
   display: grid;
-  min-height: calc(100vh - 52px);
+  min-height: 100vh;
+  padding: 24px;
   place-items: center;
 }
 
 .auth-card {
-  width: min(720px, 100%);
+  width: min(440px, 100%);
   display: grid;
   gap: 18px;
-  padding: 24px;
+  padding: 28px;
   border: 1px solid var(--line);
   background: var(--panel);
 }
@@ -165,6 +172,14 @@ button {
 .auth-mode-tabs .button.active {
   color: #050607;
   background: var(--text);
+}
+
+.auth-card .form-grid {
+  grid-template-columns: 1fr;
+}
+
+.auth-card .button.primary {
+  width: 100%;
 }
 
 .signup-fields {
