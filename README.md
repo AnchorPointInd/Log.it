@@ -4,17 +4,13 @@ Offline-first JTAC logbook available as a static web app.
 
 ## Web App
 
-Open `index.html` in a browser, or host the repository directly with GitHub Pages. The web app stores data locally in the browser with `localStorage`; use Settings -> Export Data / Backup before clearing browser data or changing devices.
+Use the live app here:
 
-### GitHub Pages
+[https://anchorpointind.github.io/Log.it/](https://anchorpointind.github.io/Log.it/)
 
-1. Push this repository to GitHub.
-2. In the repository settings, open Pages.
-3. Select "Deploy from a branch".
-4. Choose the `main` branch and `/ (root)` folder.
-5. Save. GitHub will publish the static app from `index.html`.
+The web app stores data locally in the browser with `localStorage`; use Settings -> Export Data / Backup before clearing browser data or changing devices.
 
-For local browser testing:
+## Local Development
 
 ```sh
 python3 -m http.server 4173
