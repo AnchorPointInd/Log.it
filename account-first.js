@@ -55,7 +55,7 @@ function renderAccountFirst() {
         </div>
         <form id="accountFirstForm" class="stack">
           <div class="form-grid">
-            <label>Email<input id="accountFirstEmail" type="email" autocomplete="email" required></label>
+            <label>Username<input id="accountFirstEmail" type="text" autocomplete="username" required></label>
             <label>Password<input id="accountFirstPassword" type="password" autocomplete="${accountFirstMode === "signUp" ? "new-password" : "current-password"}" minlength="6" required></label>
           </div>
           ${accountFirstSignupFields()}
