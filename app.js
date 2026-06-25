@@ -1,6 +1,7 @@
 const STORE_KEY = "jtac-logbook-web-v1";
 const PENDING_PROFILE_KEY = "jtac-logbook-pending-profile-v1";
-const USERNAME_AUTH_DOMAIN = "jtac-logbook.local";
+const USERNAME_AUTH_DOMAIN = "users.jtac-logbook.app";
+const INTERNAL_AUTH_DOMAINS = [USERNAME_AUTH_DOMAIN, "jtac-logbook.local"];
 const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_pPG2UaFree6CgIyFB5UAIA_bL6nLKqD";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -301,9 +302,14 @@ function isValidAuthIdentifier(value) {
   return identifier.includes("@") || /^[a-z0-9][a-z0-9._-]{0,62}$/.test(identifier);
 }
 
+function hasValidInternalAuthDomain() {
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(USERNAME_AUTH_DOMAIN);
+}
+
 function displayIdentifierFromUser(user) {
   const email = user?.email || "";
-  return email.endsWith(`@${USERNAME_AUTH_DOMAIN}`) ? email.slice(0, -USERNAME_AUTH_DOMAIN.length - 1) : email;
+  const internalDomain = INTERNAL_AUTH_DOMAINS.find((domain) => email.endsWith(`@${domain}`));
+  return internalDomain ? email.slice(0, -internalDomain.length - 1) : email;
 }
 
 function profileFromUserMetadata(user) {
@@ -1013,6 +1019,10 @@ document.addEventListener("submit", async (event) => {
   const identifier = normalizeAuthIdentifier($("#authEmail").value);
   if (!isValidAuthIdentifier(identifier)) {
     setStatus("Use letters, numbers, dots, hyphens or underscores for username.");
+    return;
+  }
+  if (!hasValidInternalAuthDomain()) {
+    setStatus("Username sign-in is not configured correctly.");
     return;
   }
   const email = authEmailFromIdentifier(identifier);
