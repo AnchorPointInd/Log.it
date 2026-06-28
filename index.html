@@ -51,23 +51,23 @@
         </div>
         <input type="hidden" id="entryId">
         <div class="form-grid">
-          <label>Date and time<input id="entryDate" type="datetime-local" required></label>
+          <label>Date<input id="entryDate" type="date" required></label>
           <label>Location<input id="entryLocation" required autocomplete="off"></label>
-          <label>Exercise / Operation<input id="entryExercise" autocomplete="off"></label>
-          <label>Aircraft type<input id="entryAircraftType" required autocomplete="off"></label>
+          <label>Exercise / Operation name<input id="entryExercise" autocomplete="off"></label>
+          <label>Aircraft type<select id="entryAircraftType" required></select></label>
+          <label>Aircraft category<select id="entryAircraftCategory"></select></label>
+          <label>Nationality<select id="entryAircraftNationality"></select></label>
           <label>Aircraft quantity<input id="entryAircraftQty" type="number" min="1" max="24" value="1"></label>
-          <label>Nationality<input id="entryAircraftNationality" maxlength="3" value="GBR"></label>
           <label>Ordnance type<input id="entryOrdnanceType" autocomplete="off"></label>
           <label>Ordnance quantity<input id="entryOrdnanceQty" type="number" min="1" max="99" value="1"></label>
           <label>Outcome<select id="entrySuccessful"><option value="true">Successful</option><option value="false">Unsuccessful</option></select></label>
           <label>Environment<select id="entryEnvironment"></select></label>
           <label>Type of control<select id="entryControlType"></select></label>
           <label>Method of attack<select id="entryAttackMethod"></select></label>
-          <label>Aircraft category<select id="entryAircraftCategory"></select></label>
           <label>Controller status<select id="entryControllerStatus"></select></label>
+          <label class="check-row form-check-row"><input id="entrySelfVerified" type="checkbox"> Self verify</label>
           <label>Verifier name<input id="entryVerifierName" autocomplete="off"></label>
           <label>Verifier rank<input id="entryVerifierRank" autocomplete="off"></label>
-          <label>Verifier appointment<input id="entryVerifierAppointment" autocomplete="off"></label>
           <label>Verification date<input id="entryVerificationDate" type="date"></label>
         </div>
         <label class="full-field">Notes<textarea id="entryNotes" rows="3"></textarea></label>

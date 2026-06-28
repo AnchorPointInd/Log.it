@@ -14,6 +14,8 @@ To create an account, add a Supabase Auth user with email `<username>@jtac.it` a
 
 Admin visibility is controlled in Supabase through the `app_admins` table. Add the admin user's Supabase auth `user_id` to that table after the admin account has been created.
 
+Aircraft type and aircraft category options are loaded from the Supabase `app_options` table after sign-in. Add rows with `group_key` set to `aircraft_types` or `aircraft_categories`, then set `value`, `label`, `sort_order`, and `active`. Set `active` to `false` to hide an option without deleting historical controls that already used it.
+
 ## Local Development
 
 ```sh
