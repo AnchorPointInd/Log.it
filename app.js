@@ -753,14 +753,14 @@ function renderReports() {
     ${renderHeader("Export Reports")}
     <div class="grid two">
       <section class="panel stack">
-        <p class="section-label">CAS Mission Log</p>
-        <p>Printable landscape mission log with control totals and verification.</p>
-        <button class="button primary" data-report="mission">Generate Print Report</button>
+        <p class="section-label">Logbook</p>
+        <p>Printable landscape logbook matching the legacy control sheet format.</p>
+        <button class="button primary" data-report="mission">Generate PDF</button>
       </section>
       <section class="panel stack">
         <p class="section-label">JTAC Currency Summary</p>
         <p>Current status, rolling requirements, expiry dates and deficiencies.</p>
-        <button class="button primary" data-report="currency">Generate Print Report</button>
+        <button class="button primary" data-report="currency">Generate PDF</button>
       </section>
     </div>
     <div id="printArea"></div>`;
@@ -1102,6 +1102,145 @@ function entryFromHTMLCells(cells) {
   };
 }
 
+function logbookDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+}
+
+function logbookDateRange(rows) {
+  if (!rows.length) return { start: "", end: "" };
+  return {
+    start: logbookDate(rows[0].date),
+    end: logbookDate(rows[rows.length - 1].date)
+  };
+}
+
+function logbookAircraftText(entry) {
+  const aircraft = entry.aircraft?.[0];
+  if (!aircraft) return "";
+  return `${Math.max(1, Number(aircraft.quantity || 1))} x ${[aircraft.type, aircraft.nationality].filter(Boolean).join(" ")}`.trim();
+}
+
+function logbookOrdnanceQuantity(entry) {
+  return (entry.ordnance || []).reduce((total, item) => total + Math.max(1, Number(item.quantity || 1)), 0) || "";
+}
+
+function logbookOrdnanceText(entry) {
+  return (entry.ordnance || []).map((item) => item.type).filter(Boolean).join(", ");
+}
+
+function logbookVerifierText(entry) {
+  if (entry.verification?.selfVerified) return `Self verified${entry.verification.date ? `, ${logbookDate(entry.verification.date)}` : ""}`;
+  if (!entry.verification) return "";
+  const name = [entry.verification.name, entry.verification.rank].filter(Boolean).join(" ");
+  const appointment = entry.verification.appointment || "";
+  const date = entry.verification.date ? logbookDate(entry.verification.date) : "";
+  return [name, appointment, date].filter(Boolean).map(escapeHTML).join("<br>");
+}
+
+function reportCell(value = "", className = "xl28") {
+  return `<td class="${className}">${value === "" ? "&nbsp;" : escapeHTML(String(value))}</td>`;
+}
+
+function reportHtmlCell(value = "", className = "xl28") {
+  return `<td class="${className}">${value || "&nbsp;"}</td>`;
+}
+
+function checkCell(checked) {
+  return reportHtmlCell(checked ? "&#10004;" : "&nbsp;");
+}
+
+function logbookControlCells(entry) {
+  return [
+    checkCell(entry.controlType === "Type 1"),
+    checkCell(entry.controlType === "Type 2"),
+    checkCell(entry.controlType === "Type 3"),
+    checkCell(entry.attackMethod === "BOT"),
+    checkCell(entry.attackMethod === "BOC"),
+    checkCell(entry.aircraftCategory === "Fixed Wing CAS"),
+    checkCell(entry.aircraftCategory === "Rotary Wing CAS"),
+    ...HTML_LOGBOOK_MARK_COLUMNS.map(([, value]) => checkCell(hasMark(entry, value))),
+    ...HTML_LOGBOOK_CONSTRAINT_COLUMNS.map(([, value]) => checkCell(hasConstraint(entry, value))),
+    checkCell(false),
+    checkCell(false),
+    checkCell(false),
+    checkCell(false),
+    checkCell(false),
+    checkCell(Boolean(entry.cmp))
+  ].join("");
+}
+
+function logbookReportRow(entry) {
+  const successful = entry.successful ? 1 : 0;
+  const unsuccessful = entry.successful ? 0 : 1;
+  return `<tr class="logbook-data-row">
+    ${reportCell(logbookDate(entry.date), "xl26")}
+    ${reportCell(entry.location, "xl27")}
+    ${reportCell(logbookAircraftText(entry))}
+    ${reportCell(logbookOrdnanceQuantity(entry))}
+    ${reportCell(logbookOrdnanceText(entry))}
+    ${reportCell(successful)}
+    ${reportCell(unsuccessful)}
+    ${checkCell(entry.environment === "Ground")}
+    ${checkCell(entry.environment === "Airborne")}
+    ${checkCell(entry.environment === "Simulator")}
+    ${logbookControlCells(entry)}
+    ${reportCell(entry.controllerStatus || "JTAC-Q", "xl29")}
+    ${reportHtmlCell(logbookVerifierText(entry), "xl27")}
+  </tr>`;
+}
+
+function generateLogbookReport(rows) {
+  const range = logbookDateRange(rows);
+  return `<div class="report legacy-logbook-report">
+    <table class="legacy-logbook-table" border="0" cellpadding="0" cellspacing="0">
+      <colgroup>
+        <col class="wide"><col class="wide"><col class="wide">
+        ${Array.from({ length: 41 }, () => "<col class=\"narrow\">").join("")}
+        <col class="status"><col class="verifier">
+      </colgroup>
+      <thead>
+        <tr class="legacy-title"><td colspan="46" class="xl78">Part 3 - B</td></tr>
+        <tr class="legacy-meta">
+          <td colspan="11" class="xl81">Logbook</td>
+          <td colspan="18" class="xl84">Page Start Date:&nbsp;${escapeHTML(range.start)}</td>
+          <td colspan="17" class="xl84">Page End Date:&nbsp;${escapeHTML(range.end)}</td>
+        </tr>
+        <tr>
+          <td rowspan="3" class="xl67">Date</td>
+          <td rowspan="3" class="xl67">Location</td>
+          <td rowspan="3" class="xl67">No &amp; Type of A/C</td>
+          <td rowspan="3" class="xl67">Number of Ordnance</td>
+          <td rowspan="3" class="xl67">Type of Ordnance</td>
+          <td rowspan="3" class="xl67">Number Successful</td>
+          <td rowspan="3" class="xl67">Number Unsuccessful</td>
+          <td rowspan="3" class="xl67">Ground</td>
+          <td rowspan="3" class="xl67">Airborne</td>
+          <td rowspan="3" class="xl67">SIM</td>
+          <td colspan="34" class="xl68">Control Elements</td>
+          <td rowspan="3" class="xl67">Controller Status</td>
+          <td rowspan="3" class="xl69">JTAC, FAC(A)<br>Sig, Name, Rank, Appt,<br>Date</td>
+        </tr>
+        <tr>
+          <td colspan="3" class="xl70">Type of Control</td>
+          <td colspan="2" class="xl70">Method of Attack</td>
+          <td colspan="2" class="xl70">Aircraft</td>
+          <td colspan="7" class="xl70">Marks</td>
+          <td colspan="14" class="xl70">Constraints</td>
+          <td colspan="5" class="xl70">&nbsp;</td>
+          <td rowspan="2" class="xl67">CMP</td>
+        </tr>
+        <tr>
+          ${["1", "2", "3", "BoT", "BoC", "FW CAS", "RW CAS", "LASER", "IR", "KW", "TO", "NA", "DRP", "L16 HO", "RO", "VDL/FMV", "Hot", "Non Perm", "SEAD", "Urban", "JTAC/FACA", "Day", "LL TTPs", "N FW CAS", "N TTPs", "DA", "Sup", "Aviator"].map((label) => `<td class="xl69">${escapeHTML(label)}</td>`).join("")}
+          <td class="xl69">&nbsp;</td><td class="xl69">&nbsp;</td><td class="xl69">&nbsp;</td><td class="xl69">&nbsp;</td><td class="xl69">&nbsp;</td>
+        </tr>
+      </thead>
+      <tbody>${rows.map(logbookReportRow).join("") || `<tr>${reportCell("No controls recorded", "xl26")}<td colspan="45" class="xl27">&nbsp;</td></tr>`}</tbody>
+    </table>
+  </div>`;
+}
+
 function saveProfile() {
   const previousProfile = state.profile || {};
   const data = new FormData($("#profileForm"));
@@ -1135,16 +1274,15 @@ function generateReport(type) {
       <p>${escapeHTML([profile.rank, profile.name, profile.unit].filter(Boolean).join(" | "))}</p>
       <h2>Status: ${snapshot.state}</h2>
       <table><thead><tr><th>Requirement</th><th>Completed</th><th>Required</th><th>Remaining</th><th>Expiry</th></tr></thead>
-      <tbody>${snapshot.requirements.map((item) => `<tr><td>${escapeHTML(item.name)}</td><td>${item.completed}</td><td>${item.required}</td><td>${item.remaining}</td><td>${item.expiryDate ? shortDate(item.expiryDate) : "Due now"}</td></tr>`).join("")}</tbody></table>
-    </div>` : `
-    <div class="report">
-      <h1>CAS Mission Log</h1>
-      <p>${escapeHTML([profile.rank, profile.name, profile.unit].filter(Boolean).join(" | "))}</p>
-      <table><thead><tr><th>Date</th><th>Location</th><th>Aircraft</th><th>Type</th><th>Attack</th><th>Status</th><th>Verification</th></tr></thead>
-      <tbody>${rows.map((entry) => `<tr><td>${shortDate(entry.date)}</td><td>${escapeHTML(entry.location)}</td><td>${escapeHTML(aircraftText(entry))}</td><td>${escapeHTML(entry.controlType)}</td><td>${escapeHTML(entry.attackMethod)}</td><td>${entry.successful ? "Successful" : "Unsuccessful"}</td><td>${escapeHTML(verificationText(entry))}</td></tr>`).join("")}</tbody></table>
-    </div>`;
+      <tbody>${snapshot.requirements.map((item) => `<tr><td>${escapeHTML(item.label || item.name)}</td><td>${item.completed}</td><td>${item.required}</td><td>${item.remaining}</td><td>${item.expiryDate ? shortDate(item.expiryDate) : "Due now"}</td></tr>`).join("")}</tbody></table>
+    </div>` : generateLogbookReport(rows);
   $("#printArea").innerHTML = content;
-  window.print();
+  const previousTitle = document.title;
+  document.title = type === "currency" ? "JTAC Currency Summary" : "Logbook";
+  window.addEventListener("afterprint", () => {
+    document.title = previousTitle;
+  }, { once: true });
+  setTimeout(() => window.print(), 50);
 }
 
 document.addEventListener("click", async (event) => {

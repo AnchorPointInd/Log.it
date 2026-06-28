@@ -537,7 +537,92 @@ label {
   }
 }
 
+#printArea {
+  display: none;
+}
+
+.legacy-logbook-report {
+  color: #000;
+  background: #fff;
+  font-family: Tahoma, Arial, sans-serif;
+}
+
+.legacy-logbook-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: #000;
+  background: #fff;
+  font-family: Tahoma, Arial, sans-serif;
+  font-size: 7px;
+  line-height: 1.1;
+}
+
+.legacy-logbook-table col.wide {
+  width: 58px;
+}
+
+.legacy-logbook-table col.narrow {
+  width: 20px;
+}
+
+.legacy-logbook-table col.status {
+  width: 34px;
+}
+
+.legacy-logbook-table col.verifier {
+  width: 92px;
+}
+
+.legacy-logbook-table td {
+  border: 0.5pt solid #000;
+  padding: 2px;
+  text-align: center;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.legacy-logbook-table .legacy-title td,
+.legacy-logbook-table .legacy-meta td {
+  height: 30px;
+  font-weight: 700;
+}
+
+.legacy-logbook-table .xl67 {
+  height: 68px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: normal;
+}
+
+.legacy-logbook-table .xl68,
+.legacy-logbook-table .xl69,
+.legacy-logbook-table .xl70,
+.legacy-logbook-table .xl78,
+.legacy-logbook-table .xl81,
+.legacy-logbook-table .xl84 {
+  font-weight: 700;
+}
+
+.legacy-logbook-table .xl26,
+.legacy-logbook-table .xl27,
+.legacy-logbook-table .xl28,
+.legacy-logbook-table .xl29 {
+  height: 35px;
+  font-size: 7px;
+}
+
+.legacy-logbook-table .xl29 {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
 @media print {
+  @page {
+    size: A4 landscape;
+    margin: 0.54in 0.75in 0.51in 0.75in;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -547,7 +632,14 @@ label {
   }
 
   #printArea {
+    display: block;
     position: absolute;
     inset: 0;
+    color: #000;
+    background: #fff;
+  }
+
+  .legacy-logbook-table {
+    font-size: 6.5px;
   }
 }
