@@ -1136,7 +1136,10 @@ function logbookVerifierText(entry) {
   const name = [entry.verification.name, entry.verification.rank].filter(Boolean).join(" ");
   const appointment = entry.verification.appointment || "";
   const date = entry.verification.date ? logbookDate(entry.verification.date) : "";
-  return [name, appointment, date].filter(Boolean).map(escapeHTML).join("<br>");
+  const parts = appointment
+    ? [appointment]
+    : [name, date];
+  return parts.filter(Boolean).map(escapeHTML).join("<br>");
 }
 
 function reportCell(value = "", className = "xl28") {
