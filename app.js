@@ -1,5 +1,5 @@
 const STORE_KEY = "jtac-logbook-web-v1";
-const USERNAME_AUTH_DOMAIN = "JTAC.it";
+const USERNAME_AUTH_DOMAIN = "jtac.it";
 const INTERNAL_AUTH_DOMAINS = [USERNAME_AUTH_DOMAIN, "users.jtac-logbook.app", "jtac-logbook.local"];
 const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_pPG2UaFree6CgIyFB5UAIA_bL6nLKqD";
