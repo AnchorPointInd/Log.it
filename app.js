@@ -106,6 +106,11 @@ const HTML_LOGBOOK_CONSTRAINT_COLUMNS = [
   [37, "Aviator"]
 ];
 
+const AIRCRAFT_IMPORT_ALIASES = {
+  "WC AH": "Wildcat",
+  "AW159 Wildcat": "Wildcat"
+};
+
 const COUNTRY_ALPHA2_BY_ALPHA3 = {
   AFG: "AF", ALA: "AX", ALB: "AL", DZA: "DZ", ASM: "AS", AND: "AD", AGO: "AO", AIA: "AI", ATA: "AQ", ATG: "AG", ARG: "AR", ARM: "AM", ABW: "AW", AUS: "AU", AUT: "AT", AZE: "AZ",
   BHS: "BS", BHR: "BH", BGD: "BD", BRB: "BB", BLR: "BY", BEL: "BE", BLZ: "BZ", BEN: "BJ", BMU: "BM", BTN: "BT", BOL: "BO", BES: "BQ", BIH: "BA", BWA: "BW", BVT: "BV", BRA: "BR",
@@ -895,7 +900,7 @@ function parseAircraftCell(value) {
   const text = String(value || "").trim();
   if (!text) return { quantity: 1, type: "Unknown", nationality: "" };
   const match = text.match(/^(\d+)\s*x\s*(.+)$/i);
-  if (!match) return { quantity: 1, type: text, nationality: "" };
+  if (!match) return { quantity: 1, type: AIRCRAFT_IMPORT_ALIASES[text] || text, nationality: "" };
   const quantity = Math.max(1, Number(match[1] || 1));
   let type = match[2].trim();
   let nationality = "";
@@ -904,6 +909,7 @@ function parseAircraftCell(value) {
     nationality = suffixMatch[1];
     type = type.slice(0, -suffixMatch[1].length).trim();
   }
+  type = AIRCRAFT_IMPORT_ALIASES[type] || type;
   return { quantity, type: type || "Unknown", nationality };
 }
 
