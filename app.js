@@ -79,6 +79,33 @@ const CURRENCY_REQUIREMENTS = [
   { key: "annual-evaluation", label: "Annual Evaluation", windowMonths: 12, required: 1, profileDate: "annualEvaluationDate" }
 ];
 
+const HTML_LOGBOOK_MARK_COLUMNS = [
+  [17, "Laser"],
+  [18, "IR"],
+  [19, "Keyhole"],
+  [20, "Talk-On"],
+  [21, "No Mark"],
+  [22, "DRP"],
+  [23, "Link 16 Handover"]
+];
+
+const HTML_LOGBOOK_CONSTRAINT_COLUMNS = [
+  [24, "Remote Observer"],
+  [25, "VDL/FMV"],
+  [26, "Hot"],
+  [27, "Non-Permissive"],
+  [28, "SEAD"],
+  [29, "Urban"],
+  [30, "JTAC/FAC(A)"],
+  [31, "Day"],
+  [32, "Low Level TTPs"],
+  [33, "Night FW CAS"],
+  [34, "Night TTPs"],
+  [35, "Danger Area"],
+  [36, "Supervised"],
+  [37, "Aviator"]
+];
+
 const COUNTRY_ALPHA2_BY_ALPHA3 = {
   AFG: "AF", ALA: "AX", ALB: "AL", DZA: "DZ", ASM: "AS", AND: "AD", AGO: "AO", AIA: "AI", ATA: "AQ", ATG: "AG", ARG: "AR", ARM: "AM", ABW: "AW", AUS: "AU", AUT: "AT", AZE: "AZ",
   BHS: "BS", BHR: "BH", BGD: "BD", BRB: "BB", BLR: "BY", BEL: "BE", BLZ: "BZ", BEN: "BJ", BMU: "BM", BTN: "BT", BOL: "BO", BES: "BQ", BIH: "BA", BWA: "BW", BVT: "BV", BRA: "BR",
@@ -683,7 +710,6 @@ function renderCurrency() {
         ${metric("Required", item.required)}
         ${metric("Remaining", item.remaining)}
       </div>
-      <progress max="${Math.max(item.required, 1)}" value="${Math.min(item.completed, item.required)}"></progress>
       <div class="entry-meta">${item.expiryDate ? `Expires ${shortDate(item.expiryDate)}` : "Requirement incomplete"}</div>
     </article>`;
   const sixMonthRequirements = snapshot.requirements.filter((item) => item.windowMonths === 6);
@@ -865,6 +891,22 @@ function tagHTML(value, checked, kind) {
   return `<label class="tag"><input type="checkbox" data-kind="${kind}" value="${escapeHTML(value)}" ${checked ? "checked" : ""}>${escapeHTML(value)}</label>`;
 }
 
+function parseAircraftCell(value) {
+  const text = String(value || "").trim();
+  if (!text) return { quantity: 1, type: "Unknown", nationality: "" };
+  const match = text.match(/^(\d+)\s*x\s*(.+)$/i);
+  if (!match) return { quantity: 1, type: text, nationality: "" };
+  const quantity = Math.max(1, Number(match[1] || 1));
+  let type = match[2].trim();
+  let nationality = "";
+  const suffixMatch = type.match(/\s+([A-Z]{3})$/);
+  if (suffixMatch && OPTIONS.aircraftNationalities.includes(suffixMatch[1])) {
+    nationality = suffixMatch[1];
+    type = type.slice(0, -suffixMatch[1].length).trim();
+  }
+  return { quantity, type: type || "Unknown", nationality };
+}
+
 function applySelfVerificationState() {
   const selfVerified = $("#entrySelfVerified").checked;
   const verifierFields = [$("#entryVerifierName"), $("#entryVerifierRank")];
@@ -1029,33 +1071,8 @@ function importHTMLLogbook(html) {
 
 function entryFromHTMLCells(cells) {
   const [day, month, year] = cells[0].split("/");
-  const aircraftMatch = cells[2].match(/^\s*(\d+)\s*x\s*(.+?)\s+([A-Z]{3})\s*$/);
+  const aircraft = parseAircraftCell(cells[2]);
   const marked = (index) => Boolean((cells[index] || "").trim());
-  const markColumns = [
-    [17, "Laser"],
-    [18, "IR"],
-    [19, "Keyhole"],
-    [20, "Talk-On"],
-    [21, "No Mark"],
-    [22, "DRP"],
-    [23, "Link 16 Handover"]
-  ];
-  const constraintColumns = [
-    [24, "Remote Observer"],
-    [25, "VDL/FMV"],
-    [26, "Hot"],
-    [27, "Non-Permissive"],
-    [28, "SEAD"],
-    [29, "Urban"],
-    [30, "JTAC/FAC(A)"],
-    [31, "Day"],
-    [32, "Low Level TTPs"],
-    [33, "Night FW CAS"],
-    [34, "Night TTPs"],
-    [35, "Danger Area"],
-    [36, "Supervised"],
-    [37, "Aviator"]
-  ];
   return {
     id: uid(),
     date: new Date(`${year}-${month}-${day}T12:00:00`).toISOString(),
@@ -1067,11 +1084,11 @@ function entryFromHTMLCells(cells) {
     controlType: marked(10) ? "Type 1" : marked(11) ? "Type 2" : "Type 3",
     attackMethod: marked(14) ? "BOC" : "BOT",
     aircraftCategory: marked(16) ? "Rotary Wing CAS" : "Fixed Wing CAS",
-    marks: markColumns.filter(([index]) => marked(index)).map(([, value]) => value),
-    constraints: constraintColumns.filter(([index]) => marked(index)).map(([, value]) => value),
+    marks: HTML_LOGBOOK_MARK_COLUMNS.filter(([index]) => marked(index)).map(([, value]) => value),
+    constraints: HTML_LOGBOOK_CONSTRAINT_COLUMNS.filter(([index]) => marked(index)).map(([, value]) => value),
     cmp: marked(43),
     controllerStatus: OPTIONS.controllerStatuses.includes(cells[44]) ? cells[44] : "JTAC-Q",
-    aircraft: aircraftMatch ? [{ quantity: Number(aircraftMatch[1]), type: aircraftMatch[2], nationality: aircraftMatch[3] }] : [{ quantity: 1, type: cells[2] || "Unknown", nationality: "" }],
+    aircraft: [aircraft],
     ordnance: cells[4] ? [{ quantity: Math.max(1, Number(cells[3] || 1)), type: cells[4] }] : [],
     verification: cells[45] ? { name: cells[45].split(/\n/)[0], rank: "", appointment: cells[45], date: `${year}-${month}-${day}` } : null,
     createdAt: new Date().toISOString(),
