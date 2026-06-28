@@ -359,6 +359,9 @@ button {
 }
 
 .tag input {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: auto;
   margin-right: 7px;
 }
 
