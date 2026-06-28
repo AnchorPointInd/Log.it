@@ -1,7 +1,7 @@
 const STORE_KEY = "jtac-logbook-web-v1";
 const PENDING_PROFILE_KEY = "jtac-logbook-pending-profile-v1";
-const USERNAME_AUTH_DOMAIN = "users.jtac-logbook.app";
-const INTERNAL_AUTH_DOMAINS = [USERNAME_AUTH_DOMAIN, "jtac-logbook.local"];
+const USERNAME_AUTH_DOMAIN = "jtaclogbook.com";
+const INTERNAL_AUTH_DOMAINS = [USERNAME_AUTH_DOMAIN, "users.jtac-logbook.app", "jtac-logbook.local"];
 const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_pPG2UaFree6CgIyFB5UAIA_bL6nLKqD";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
