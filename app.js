@@ -1,5 +1,4 @@
 const STORE_KEY = "jtac-logbook-web-v1";
-const PENDING_PROFILE_KEY = "jtac-logbook-pending-profile-v1";
 const USERNAME_AUTH_DOMAIN = "jtaclogbook.com";
 const INTERNAL_AUTH_DOMAINS = [USERNAME_AUTH_DOMAIN, "users.jtac-logbook.app", "jtac-logbook.local"];
 const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
@@ -29,7 +28,6 @@ let currentUser = null;
 let isAdmin = false;
 let adminProfiles = [];
 let adminControls = [];
-let authMode = "signIn";
 let syncStatus = "Sign in to sync controls.";
 let filterState = {
   search: "",
@@ -259,35 +257,6 @@ function stateProfileToDb(profile) {
   };
 }
 
-function loadPendingProfile(email) {
-  try {
-    const pending = JSON.parse(localStorage.getItem(PENDING_PROFILE_KEY)) || {};
-    return pending[email.toLowerCase()] || null;
-  } catch {
-    return null;
-  }
-}
-
-function savePendingProfile(email, profile) {
-  try {
-    const pending = JSON.parse(localStorage.getItem(PENDING_PROFILE_KEY)) || {};
-    pending[email.toLowerCase()] = profile;
-    localStorage.setItem(PENDING_PROFILE_KEY, JSON.stringify(pending));
-  } catch {
-    // Local profile recovery is best-effort only.
-  }
-}
-
-function clearPendingProfile(email) {
-  try {
-    const pending = JSON.parse(localStorage.getItem(PENDING_PROFILE_KEY)) || {};
-    delete pending[email.toLowerCase()];
-    localStorage.setItem(PENDING_PROFILE_KEY, JSON.stringify(pending));
-  } catch {
-    // No action required.
-  }
-}
-
 function normalizeAuthIdentifier(value) {
   return value.trim().toLowerCase();
 }
@@ -341,12 +310,8 @@ async function loadRemoteState() {
   isAdmin = Boolean(adminRow);
   state.profile = dbProfileToState(profile);
   if (!profile) {
-    const pendingProfile = loadPendingProfile(currentUser.email || "") || profileFromUserMetadata(currentUser);
-    if (pendingProfile) {
-      state.profile = pendingProfile;
-      await saveRemoteProfile();
-      clearPendingProfile(currentUser.email || "");
-    }
+    state.profile = profileFromUserMetadata(currentUser);
+    await saveRemoteProfile();
   }
   state.entries = (controls || []).map(dbControlToEntry);
   if (isAdmin) await loadAdminData();
@@ -442,19 +407,6 @@ function render() {
   renderAuthPanel();
 }
 
-function signupFieldsHTML() {
-  if (authMode !== "signUp") return "";
-  return `
-    <div class="signup-fields">
-      <div class="form-grid">
-        <label>Rank<input id="signupRank" autocomplete="honorific-prefix" required></label>
-        <label>Name<input id="signupName" autocomplete="name" required></label>
-        <label>Service Number<input id="signupServiceNumber" autocomplete="off" required></label>
-      </div>
-      <label class="check-row"><input id="signupFormationSenior" type="checkbox"> Request formation senior access</label>
-    </div>`;
-}
-
 function renderSignedOut() {
   $$(".view").forEach((view) => view.classList.remove("active"));
   $("#dashboardView").classList.add("active");
@@ -465,18 +417,14 @@ function renderSignedOut() {
           <p class="eyebrow">JTAC Logbook</p>
           <h1>Account Access</h1>
         </div>
-        <div class="auth-mode-tabs">
-          <button class="button ${authMode === "signIn" ? "active" : "secondary"}" type="button" data-auth-mode="signIn">Sign In</button>
-          <button class="button ${authMode === "signUp" ? "active" : "secondary"}" type="button" data-auth-mode="signUp">Create Account</button>
-        </div>
         <form id="authForm" class="stack">
           <div class="form-grid">
             <label>Username<input id="authEmail" type="text" autocomplete="username" required></label>
-            <label>Password<input id="authPassword" type="password" autocomplete="${authMode === "signUp" ? "new-password" : "current-password"}" minlength="6" required></label>
+            <label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required></label>
           </div>
-          ${signupFieldsHTML()}
-          <button class="button primary" type="submit" data-auth="${authMode}">${authMode === "signUp" ? "Create Account" : "Sign In"}</button>
+          <button class="button primary" type="submit">Sign In</button>
         </form>
+        <p class="entry-meta">Accounts are created by an admin.</p>
         <p class="entry-meta" id="authStatus">${escapeHTML(syncStatus)}</p>
       </section>
     </div>`;
@@ -970,11 +918,6 @@ document.addEventListener("click", async (event) => {
   const target = event.target.closest("button");
   if (!target) return;
   if (target.closest("#authForm")) return;
-  if (target.dataset.authMode) {
-    authMode = target.dataset.authMode;
-    render();
-    return;
-  }
   if (target.dataset.view) activeView = target.dataset.view;
   if (target.dataset.nav) activeView = target.dataset.nav;
   if (target.dataset.action === "add" || target.id === "quickAdd") openEntryDialog();
@@ -1027,48 +970,11 @@ document.addEventListener("submit", async (event) => {
   }
   const email = authEmailFromIdentifier(identifier);
   const password = $("#authPassword").value;
-  const isSignUp = authMode === "signUp";
-  let profile = null;
-  if (isSignUp) {
-    const formationSeniorRequested = $("#signupFormationSenior").checked;
-    profile = {
-      email: identifier,
-      rank: $("#signupRank").value.trim(),
-      name: $("#signupName").value.trim(),
-      serviceNumber: $("#signupServiceNumber").value.trim(),
-      formationSeniorRequested,
-      formationSeniorRequestedAt: formationSeniorRequested ? new Date().toISOString() : ""
-    };
-    if (!profile.rank || !profile.name || !profile.serviceNumber) {
-      setStatus("Rank, name and service number are required.");
-      return;
-    }
-    savePendingProfile(email, profile);
-  }
   try {
-    setStatus(isSignUp ? "Creating account..." : "Signing in...");
-    const result = isSignUp
-      ? await supabaseClient.auth.signUp({
-        email,
-        password,
-        options: { data: profile }
-      })
-      : await supabaseClient.auth.signInWithPassword({ email, password });
+    setStatus("Signing in...");
+    const result = await supabaseClient.auth.signInWithPassword({ email, password });
     if (result.error) {
       setStatus(result.error.message);
-      return;
-    }
-    if (isSignUp && result.data.session && result.data.user) {
-      currentUser = result.data.user;
-      state.profile = profile;
-      await saveRemoteProfile();
-      clearPendingProfile(email);
-      setStatus("Account created.");
-      await loadRemoteState();
-      return;
-    }
-    if (isSignUp && !result.data.session) {
-      setStatus("Account created. If sign-in is blocked, ask an admin to confirm the account in Supabase.");
       return;
     }
     if (result.data.session && result.data.user) {
