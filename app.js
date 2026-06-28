@@ -9,8 +9,27 @@ const OPTIONS = {
   environments: ["Ground", "Airborne", "Simulator"],
   controlTypes: ["Type 1", "Type 2", "Type 3"],
   attackMethods: ["BOT", "BOC"],
-  aircraftCategories: ["Fixed Wing CAS", "Rotary Wing CAS"],
+  aircraftCategories: [],
+  casAircraft: [],
   controllerStatuses: ["JTAC-IQ", "JTAC-Q", "FAC(A)", "Instructor"],
+  aircraftNationalities: [
+    "AFG", "ALA", "ALB", "DZA", "ASM", "AND", "AGO", "AIA", "ATA", "ATG", "ARG", "ARM", "ABW", "AUS", "AUT", "AZE",
+    "BHS", "BHR", "BGD", "BRB", "BLR", "BEL", "BLZ", "BEN", "BMU", "BTN", "BOL", "BES", "BIH", "BWA", "BVT", "BRA",
+    "IOT", "BRN", "BGR", "BFA", "BDI", "CPV", "KHM", "CMR", "CAN", "CYM", "CAF", "TCD", "CHL", "CHN", "CXR", "CCK",
+    "COL", "COM", "COG", "COD", "COK", "CRI", "CIV", "HRV", "CUB", "CUW", "CYP", "CZE", "DNK", "DJI", "DMA", "DOM",
+    "ECU", "EGY", "SLV", "GNQ", "ERI", "EST", "SWZ", "ETH", "FLK", "FRO", "FJI", "FIN", "FRA", "GUF", "PYF", "ATF",
+    "GAB", "GMB", "GEO", "DEU", "GHA", "GIB", "GRC", "GRL", "GRD", "GLP", "GUM", "GTM", "GGY", "GIN", "GNB", "GUY",
+    "HTI", "HMD", "VAT", "HND", "HKG", "HUN", "ISL", "IND", "IDN", "IRN", "IRQ", "IRL", "IMN", "ISR", "ITA", "JAM",
+    "JPN", "JEY", "JOR", "KAZ", "KEN", "KIR", "PRK", "KOR", "KWT", "KGZ", "LAO", "LVA", "LBN", "LSO", "LBR", "LBY",
+    "LIE", "LTU", "LUX", "MAC", "MDG", "MWI", "MYS", "MDV", "MLI", "MLT", "MHL", "MTQ", "MRT", "MUS", "MYT", "MEX",
+    "FSM", "MDA", "MCO", "MNG", "MNE", "MSR", "MAR", "MOZ", "MMR", "NAM", "NRU", "NPL", "NLD", "NCL", "NZL", "NIC",
+    "NER", "NGA", "NIU", "NFK", "MKD", "MNP", "NOR", "OMN", "PAK", "PLW", "PSE", "PAN", "PNG", "PRY", "PER", "PHL",
+    "PCN", "POL", "PRT", "PRI", "QAT", "REU", "ROU", "RUS", "RWA", "BLM", "SHN", "KNA", "LCA", "MAF", "SPM", "VCT",
+    "WSM", "SMR", "STP", "SAU", "SEN", "SRB", "SYC", "SLE", "SGP", "SXM", "SVK", "SVN", "SLB", "SOM", "ZAF", "SGS",
+    "SSD", "ESP", "LKA", "SDN", "SUR", "SJM", "SWE", "CHE", "SYR", "TWN", "TJK", "TZA", "THA", "TLS", "TGO", "TKL",
+    "TON", "TTO", "TUN", "TUR", "TKM", "TCA", "TUV", "UGA", "UKR", "ARE", "GBR", "USA", "UMI", "URY", "UZB", "VUT",
+    "VEN", "VNM", "VGB", "VIR", "WLF", "ESH", "YEM", "ZMB", "ZWE"
+  ],
   marks: ["Laser", "IR", "Keyhole", "Talk-On", "No Mark", "DRP", "Link 16 Handover", "Radar Offset", "VDL/FMV"],
   constraints: ["Hot", "Non-Permissive", "SEAD", "Urban", "JTAC/FAC(A)", "Remote Observer", "Supervised", "Day", "Low Level TTPs", "Night FW CAS", "Night TTPs", "Danger Area", "Suppression", "Aviator"]
 };
@@ -19,6 +38,69 @@ const DEFAULT_REQUIREMENTS = [
   { name: "Rolling 6 Month Controls", windowMonths: 6, requiredCount: 6, active: true, qualifyingControlTypes: OPTIONS.controlTypes },
   { name: "Rolling 12 Month Controls", windowMonths: 12, requiredCount: 12, active: true, qualifyingControlTypes: OPTIONS.controlTypes }
 ];
+
+const CURRENCY_REQUIREMENTS = [
+  { key: "type1", label: "Type 1", windowMonths: 6, required: 1, predicate: (entry) => entry.controlType === "Type 1" },
+  { key: "type2", label: "Type 2", windowMonths: 6, required: 1, predicate: (entry) => entry.controlType === "Type 2" },
+  { key: "type3", label: "Type 3", windowMonths: 6, required: 1, predicate: (entry) => entry.controlType === "Type 3" },
+  { key: "bot", label: "MoA - BoT", windowMonths: 6, required: 1, predicate: (entry) => entry.attackMethod === "BOT" },
+  { key: "boc", label: "MoA - BoC", windowMonths: 6, required: 1, predicate: (entry) => entry.attackMethod === "BOC" },
+  { key: "fw-cas", label: "Aircraft - FW CAS", windowMonths: 6, required: 2, predicate: (entry) => entry.aircraftCategory === "Fixed Wing CAS" },
+  { key: "rw-cas", label: "Aircraft - RW CAS", windowMonths: 6, required: 1, predicate: (entry) => entry.aircraftCategory === "Rotary Wing CAS" },
+  { key: "laser", label: "Mark - LASER", windowMonths: 6, required: 1, predicate: (entry) => hasMark(entry, "Laser") },
+  { key: "ir", label: "Mark - IR Pointer", windowMonths: 6, required: 1, predicate: (entry) => hasMark(entry, "IR") },
+  { key: "remote-observer", label: "Constraint - Remote Observer", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "Remote Observer") || hasMark(entry, "Radar Offset") },
+  { key: "vdl-fmv", label: "Constraint - VDL/FMV", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "VDL/FMV") || hasMark(entry, "VDL/FMV") },
+  { key: "live-hot", label: "Constraint - Live/Hot", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "Hot") },
+  { key: "non-perm", label: "Constraint - 9 Line/Non Perm", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "Non-Permissive") },
+  { key: "day", label: "Constraint - Day", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "Day") },
+  { key: "ll-ttps", label: "Constraint - LL TTPs", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "Low Level TTPs") },
+  { key: "night-ttps", label: "Constraint - Night TTPs", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "Night TTPs") },
+  { key: "supervised", label: "Constraint - Supervised", windowMonths: 6, required: 1, predicate: (entry) => hasConstraint(entry, "Supervised") },
+  { key: "pms-proficiency", label: "PMS Proficiency", windowMonths: 6, required: 1, profileDate: "pmsProficiencyDate" },
+  { key: "type1", label: "Type 1", windowMonths: 12, required: 2, predicate: (entry) => entry.controlType === "Type 1" },
+  { key: "type2", label: "Type 2", windowMonths: 12, required: 2, predicate: (entry) => entry.controlType === "Type 2" },
+  { key: "type3", label: "Type 3", windowMonths: 12, required: 2, predicate: (entry) => entry.controlType === "Type 3" },
+  { key: "bot", label: "MoA - BoT", windowMonths: 12, required: 2, predicate: (entry) => entry.attackMethod === "BOT" },
+  { key: "boc", label: "MoA - BoC", windowMonths: 12, required: 2, predicate: (entry) => entry.attackMethod === "BOC" },
+  { key: "fw-cas", label: "Aircraft - FW CAS", windowMonths: 12, required: 4, predicate: (entry) => entry.aircraftCategory === "Fixed Wing CAS" },
+  { key: "rw-cas", label: "Aircraft - RW CAS", windowMonths: 12, required: 2, predicate: (entry) => entry.aircraftCategory === "Rotary Wing CAS" },
+  { key: "laser", label: "Mark - LASER", windowMonths: 12, required: 2, predicate: (entry) => hasMark(entry, "Laser") },
+  { key: "ir", label: "Mark - IR Pointer", windowMonths: 12, required: 2, predicate: (entry) => hasMark(entry, "IR") },
+  { key: "remote-observer", label: "Constraint - Remote Observer", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "Remote Observer") || hasMark(entry, "Radar Offset") },
+  { key: "vdl-fmv", label: "Constraint - VDL/FMV", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "VDL/FMV") || hasMark(entry, "VDL/FMV") },
+  { key: "live-hot", label: "Constraint - Live/Hot", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "Hot") },
+  { key: "non-perm", label: "Constraint - 9 Line/Non Perm", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "Non-Permissive") },
+  { key: "day", label: "Constraint - Day", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "Day") },
+  { key: "ll-ttps", label: "Constraint - LL TTPs", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "Low Level TTPs") },
+  { key: "night-ttps", label: "Constraint - Night TTPs", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "Night TTPs") },
+  { key: "supervised", label: "Constraint - Supervised", windowMonths: 12, required: 2, predicate: (entry) => hasConstraint(entry, "Supervised") },
+  { key: "pms-training", label: "PMS Training", windowMonths: 12, required: 1, profileDate: "pmsTrainingDate" },
+  { key: "annual-evaluation", label: "Annual Evaluation", windowMonths: 12, required: 1, profileDate: "annualEvaluationDate" }
+];
+
+const COUNTRY_ALPHA2_BY_ALPHA3 = {
+  AFG: "AF", ALA: "AX", ALB: "AL", DZA: "DZ", ASM: "AS", AND: "AD", AGO: "AO", AIA: "AI", ATA: "AQ", ATG: "AG", ARG: "AR", ARM: "AM", ABW: "AW", AUS: "AU", AUT: "AT", AZE: "AZ",
+  BHS: "BS", BHR: "BH", BGD: "BD", BRB: "BB", BLR: "BY", BEL: "BE", BLZ: "BZ", BEN: "BJ", BMU: "BM", BTN: "BT", BOL: "BO", BES: "BQ", BIH: "BA", BWA: "BW", BVT: "BV", BRA: "BR",
+  IOT: "IO", BRN: "BN", BGR: "BG", BFA: "BF", BDI: "BI", CPV: "CV", KHM: "KH", CMR: "CM", CAN: "CA", CYM: "KY", CAF: "CF", TCD: "TD", CHL: "CL", CHN: "CN", CXR: "CX", CCK: "CC",
+  COL: "CO", COM: "KM", COG: "CG", COD: "CD", COK: "CK", CRI: "CR", CIV: "CI", HRV: "HR", CUB: "CU", CUW: "CW", CYP: "CY", CZE: "CZ", DNK: "DK", DJI: "DJ", DMA: "DM", DOM: "DO",
+  ECU: "EC", EGY: "EG", SLV: "SV", GNQ: "GQ", ERI: "ER", EST: "EE", SWZ: "SZ", ETH: "ET", FLK: "FK", FRO: "FO", FJI: "FJ", FIN: "FI", FRA: "FR", GUF: "GF", PYF: "PF", ATF: "TF",
+  GAB: "GA", GMB: "GM", GEO: "GE", DEU: "DE", GHA: "GH", GIB: "GI", GRC: "GR", GRL: "GL", GRD: "GD", GLP: "GP", GUM: "GU", GTM: "GT", GGY: "GG", GIN: "GN", GNB: "GW", GUY: "GY",
+  HTI: "HT", HMD: "HM", VAT: "VA", HND: "HN", HKG: "HK", HUN: "HU", ISL: "IS", IND: "IN", IDN: "ID", IRN: "IR", IRQ: "IQ", IRL: "IE", IMN: "IM", ISR: "IL", ITA: "IT", JAM: "JM",
+  JPN: "JP", JEY: "JE", JOR: "JO", KAZ: "KZ", KEN: "KE", KIR: "KI", PRK: "KP", KOR: "KR", KWT: "KW", KGZ: "KG", LAO: "LA", LVA: "LV", LBN: "LB", LSO: "LS", LBR: "LR", LBY: "LY",
+  LIE: "LI", LTU: "LT", LUX: "LU", MAC: "MO", MDG: "MG", MWI: "MW", MYS: "MY", MDV: "MV", MLI: "ML", MLT: "MT", MHL: "MH", MTQ: "MQ", MRT: "MR", MUS: "MU", MYT: "YT", MEX: "MX",
+  FSM: "FM", MDA: "MD", MCO: "MC", MNG: "MN", MNE: "ME", MSR: "MS", MAR: "MA", MOZ: "MZ", MMR: "MM", NAM: "NA", NRU: "NR", NPL: "NP", NLD: "NL", NCL: "NC", NZL: "NZ", NIC: "NI",
+  NER: "NE", NGA: "NG", NIU: "NU", NFK: "NF", MKD: "MK", MNP: "MP", NOR: "NO", OMN: "OM", PAK: "PK", PLW: "PW", PSE: "PS", PAN: "PA", PNG: "PG", PRY: "PY", PER: "PE", PHL: "PH",
+  PCN: "PN", POL: "PL", PRT: "PT", PRI: "PR", QAT: "QA", REU: "RE", ROU: "RO", RUS: "RU", RWA: "RW", BLM: "BL", SHN: "SH", KNA: "KN", LCA: "LC", MAF: "MF", SPM: "PM", VCT: "VC",
+  WSM: "WS", SMR: "SM", STP: "ST", SAU: "SA", SEN: "SN", SRB: "RS", SYC: "SC", SLE: "SL", SGP: "SG", SXM: "SX", SVK: "SK", SVN: "SI", SLB: "SB", SOM: "SO", ZAF: "ZA", SGS: "GS",
+  SSD: "SS", ESP: "ES", LKA: "LK", SDN: "SD", SUR: "SR", SJM: "SJ", SWE: "SE", CHE: "CH", SYR: "SY", TWN: "TW", TJK: "TJ", TZA: "TZ", THA: "TH", TLS: "TL", TGO: "TG", TKL: "TK",
+  TON: "TO", TTO: "TT", TUN: "TN", TUR: "TR", TKM: "TM", TCA: "TC", TUV: "TV", UGA: "UG", UKR: "UA", ARE: "AE", GBR: "GB", USA: "US", UMI: "UM", URY: "UY", UZB: "UZ", VUT: "VU",
+  VEN: "VE", VNM: "VN", VGB: "VG", VIR: "VI", WLF: "WF", ESH: "EH", YEM: "YE", ZMB: "ZM", ZWE: "ZW"
+};
+
+const regionNames = typeof Intl !== "undefined" && Intl.DisplayNames
+  ? new Intl.DisplayNames(["en"], { type: "region" })
+  : null;
 
 let state = loadState();
 let activeView = "dashboard";
@@ -29,6 +111,7 @@ let isAdmin = false;
 let adminProfiles = [];
 let adminControls = [];
 let syncStatus = "Sign in to sync controls.";
+let optionsLoaded = false;
 let filterState = {
   search: "",
   type: "",
@@ -79,13 +162,14 @@ function uid() {
 }
 
 function parseDate(value) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return new Date(`${value}T12:00:00`);
   return value ? new Date(value) : null;
 }
 
 function dateInputValue(value) {
   const date = value ? new Date(value) : new Date();
   const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
 
 function shortDate(value) {
@@ -119,30 +203,46 @@ function daysBetween(start, end) {
   return Math.ceil((b - a) / day);
 }
 
+function hasMark(entry, value) {
+  return (entry.marks || []).includes(value);
+}
+
+function hasConstraint(entry, value) {
+  return (entry.constraints || []).includes(value);
+}
+
+function completedDatesForRequirement(requirement, successful) {
+  if (requirement.profileDate) {
+    const value = state.profile?.[requirement.profileDate];
+    return value ? [new Date(`${String(value).slice(0, 10)}T12:00:00`)] : [];
+  }
+  return successful.filter(requirement.predicate).map((entry) => new Date(entry.date));
+}
+
+function requirementProgress(requirement, successful, asOf) {
+  const start = addMonths(asOf, -requirement.windowMonths);
+  const dates = completedDatesForRequirement(requirement, successful)
+    .filter((date) => date >= start && date <= asOf)
+    .sort((a, b) => b - a);
+  const expiryDate = dates.length >= requirement.required
+    ? addMonths(dates[requirement.required - 1], requirement.windowMonths)
+    : null;
+  return {
+    ...requirement,
+    completed: dates.length,
+    remaining: Math.max(0, requirement.required - dates.length),
+    isMet: dates.length >= requirement.required,
+    expiryDate
+  };
+}
+
 function calculateCurrency(asOf = new Date()) {
   const successful = state.entries
     .filter((entry) => entry.successful && new Date(entry.date) <= asOf)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   const sixStart = addMonths(asOf, -6);
   const twelveStart = addMonths(asOf, -12);
-  const requirements = (state.requirements || DEFAULT_REQUIREMENTS).filter((item) => item.active !== false);
-  const progress = requirements.map((requirement) => {
-    const start = addMonths(asOf, -requirement.windowMonths);
-    const allowed = new Set(requirement.qualifyingControlTypes || OPTIONS.controlTypes);
-    const matching = successful.filter((entry) => new Date(entry.date) >= start && allowed.has(entry.controlType));
-    let expiryDate = null;
-    if (matching.length >= requirement.requiredCount) {
-      expiryDate = addMonths(new Date(matching[matching.length - requirement.requiredCount].date), requirement.windowMonths);
-    }
-    return {
-      ...requirement,
-      completed: matching.length,
-      required: requirement.requiredCount,
-      remaining: Math.max(0, requirement.requiredCount - matching.length),
-      isMet: matching.length >= requirement.requiredCount,
-      expiryDate
-    };
-  });
+  const progress = CURRENCY_REQUIREMENTS.map((requirement) => requirementProgress(requirement, successful, asOf));
   const nextExpiryDate = progress.map((item) => item.expiryDate).filter(Boolean).sort((a, b) => a - b)[0] || null;
   const expiringWithin30Days = progress.filter((item) => item.expiryDate && item.expiryDate > asOf && item.expiryDate <= new Date(asOf.getTime() + 30 * 86400000)).length;
   const stateName = progress.some((item) => !item.isMet) ? "RED" : expiringWithin30Days > 0 ? "AMBER" : "GREEN";
@@ -161,6 +261,7 @@ function aircraftText(entry) {
 }
 
 function verificationText(entry) {
+  if (entry.verification?.selfVerified) return "Self verified";
   return entry.verification && entry.verification.name ? "Verified" : "Unverified";
 }
 
@@ -300,7 +401,8 @@ function profileFromUserMetadata(user) {
 async function loadRemoteState() {
   if (!currentUser) return;
   setStatus("Loading account data...");
-  const [{ data: profile, error: profileError }, { data: controls, error: controlsError }, { data: adminRow, error: adminError }] = await Promise.all([
+  const [, { data: profile, error: profileError }, { data: controls, error: controlsError }, { data: adminRow, error: adminError }] = await Promise.all([
+    loadRemoteOptions(),
     supabaseClient.from("profiles").select("*").eq("user_id", currentUser.id).maybeSingle(),
     supabaseClient.from("controls").select("*").eq("user_id", currentUser.id).order("date", { ascending: false }),
     supabaseClient.from("app_admins").select("user_id").eq("user_id", currentUser.id).maybeSingle()
@@ -323,6 +425,32 @@ async function loadRemoteState() {
   saveState();
   setStatus(`Signed in as ${displayIdentifierFromUser(currentUser)}.`);
   render();
+}
+
+async function loadRemoteOptions() {
+  const { data, error } = await supabaseClient
+    .from("app_options")
+    .select("group_key,value,label")
+    .eq("active", true)
+    .in("group_key", ["aircraft_categories", "aircraft_types"])
+    .order("label", { ascending: true });
+  if (error) throw error;
+
+  const grouped = (data || []).reduce((groups, row) => {
+    groups[row.group_key] = groups[row.group_key] || [];
+    groups[row.group_key].push(row);
+    return groups;
+  }, {});
+
+  const requiredGroups = ["aircraft_categories", "aircraft_types"];
+  const missingGroups = requiredGroups.filter((group) => !grouped[group]?.length);
+  if (missingGroups.length) {
+    throw new Error(`Missing Supabase option groups: ${missingGroups.join(", ")}.`);
+  }
+
+  OPTIONS.aircraftCategories = grouped.aircraft_categories.map((row) => row.value);
+  OPTIONS.casAircraft = grouped.aircraft_types.map((row) => row.value);
+  optionsLoaded = true;
 }
 
 async function loadAdminData() {
@@ -377,6 +505,7 @@ async function bootstrapAuth() {
     if (currentUser) loadRemoteState().catch((error) => setStatus(error.message));
     else {
       isAdmin = false;
+      optionsLoaded = false;
       adminProfiles = [];
       adminControls = [];
       activeView = "dashboard";
@@ -546,9 +675,9 @@ function entryRow(entry) {
 
 function renderCurrency() {
   const snapshot = calculateCurrency();
-  const cards = snapshot.requirements.map((item) => `
-    <section class="panel stack">
-      <p class="section-label">${escapeHTML(item.name)}</p>
+  const requirementCard = (item) => `
+    <article class="requirement-tile ${item.isMet ? "is-met" : "is-missing"}">
+      <p class="section-label">${escapeHTML(item.label)}</p>
       <div class="grid three">
         ${metric("Completed", item.completed)}
         ${metric("Required", item.required)}
@@ -556,12 +685,31 @@ function renderCurrency() {
       </div>
       <progress max="${Math.max(item.required, 1)}" value="${Math.min(item.completed, item.required)}"></progress>
       <div class="entry-meta">${item.expiryDate ? `Expires ${shortDate(item.expiryDate)}` : "Requirement incomplete"}</div>
-    </section>`).join("");
+    </article>`;
+  const sixMonthRequirements = snapshot.requirements.filter((item) => item.windowMonths === 6);
+  const twelveMonthRequirements = snapshot.requirements.filter((item) => item.windowMonths === 12);
   $("#currencyView").innerHTML = `
     ${renderHeader("Currency Tracker")}
     <div class="stack">
       <section class="status-panel status-${snapshot.state.toLowerCase()}"><p class="eyebrow">Currency Status</p><h3>${snapshot.state}</h3></section>
-      ${cards}
+      <section class="panel stack">
+        <p class="section-label">Rolling 6 Month Requirements</p>
+        <div class="grid three">
+          ${metric("Met", sixMonthRequirements.filter((item) => item.isMet).length)}
+          ${metric("Required", sixMonthRequirements.length)}
+          ${metric("Missing", sixMonthRequirements.filter((item) => !item.isMet).length)}
+        </div>
+        <div class="grid three">${sixMonthRequirements.map(requirementCard).join("")}</div>
+      </section>
+      <section class="panel stack">
+        <p class="section-label">Rolling 12 Month Requirements</p>
+        <div class="grid three">
+          ${metric("Met", twelveMonthRequirements.filter((item) => item.isMet).length)}
+          ${metric("Required", twelveMonthRequirements.length)}
+          ${metric("Missing", twelveMonthRequirements.filter((item) => !item.isMet).length)}
+        </div>
+        <div class="grid three">${twelveMonthRequirements.map(requirementCard).join("")}</div>
+      </section>
       <section class="panel">
         <p class="section-label">Expiry timeline</p>
         <p>${snapshot.nextExpiryDate ? `Next control required ${shortDate(snapshot.nextExpiryDate)}.` : "Requirements are incomplete. A qualifying control is required now."}</p>
@@ -688,12 +836,24 @@ function optionsHTML(options, selected = "") {
   return options.map((option) => `<option value="${escapeHTML(option)}" ${option === selected ? "selected" : ""}>${escapeHTML(option)}</option>`).join("");
 }
 
+function nationalityOptionsHTML(selected = "GBR") {
+  return OPTIONS.aircraftNationalities.map((code) => {
+    const alpha2 = COUNTRY_ALPHA2_BY_ALPHA3[code];
+    const countryName = alpha2 && regionNames ? regionNames.of(alpha2) : "";
+    const label = countryName ? `${countryName} (${code})` : code;
+    return `<option value="${escapeHTML(code)}" ${code === selected ? "selected" : ""}>${escapeHTML(label)}</option>`;
+  }).join("");
+}
+
 function setupFormControls() {
+  if (!optionsLoaded) throw new Error("Reference options have not loaded from Supabase.");
   $("#entryEnvironment").innerHTML = optionsHTML(OPTIONS.environments);
   $("#entryControlType").innerHTML = optionsHTML(OPTIONS.controlTypes);
   $("#entryAttackMethod").innerHTML = optionsHTML(OPTIONS.attackMethods);
   $("#entryAircraftCategory").innerHTML = optionsHTML(OPTIONS.aircraftCategories);
+  $("#entryAircraftType").innerHTML = `<option value="">Select aircraft</option>${optionsHTML(OPTIONS.casAircraft)}`;
   $("#entryControllerStatus").innerHTML = optionsHTML(OPTIONS.controllerStatuses);
+  $("#entryAircraftNationality").innerHTML = nationalityOptionsHTML("GBR");
 }
 
 function renderTagPickers() {
@@ -705,7 +865,18 @@ function tagHTML(value, checked, kind) {
   return `<label class="tag"><input type="checkbox" data-kind="${kind}" value="${escapeHTML(value)}" ${checked ? "checked" : ""}>${escapeHTML(value)}</label>`;
 }
 
+function applySelfVerificationState() {
+  const selfVerified = $("#entrySelfVerified").checked;
+  const verifierFields = [$("#entryVerifierName"), $("#entryVerifierRank")];
+  if (selfVerified) verifierFields.forEach((field) => { field.value = ""; });
+  verifierFields.forEach((field) => { field.disabled = selfVerified; });
+}
+
 function openEntryDialog(entry = null) {
+  if (!optionsLoaded) {
+    setStatus("Reference options are still loading from Supabase.");
+    return;
+  }
   setupFormControls();
   selectedMarks = new Set(entry?.marks || []);
   selectedConstraints = new Set(entry?.constraints || []);
@@ -718,28 +889,39 @@ function openEntryDialog(entry = null) {
   $("#entryExercise").value = entry?.exerciseOperation || "";
   $("#entryNotes").value = entry?.notes || "";
   $("#entryAircraftQty").value = entry?.aircraft?.[0]?.quantity || 1;
-  $("#entryAircraftType").value = entry?.aircraft?.[0]?.type || "";
-  $("#entryAircraftNationality").value = entry?.aircraft?.[0]?.nationality || "GBR";
+  const aircraftType = entry?.aircraft?.[0]?.type || "";
+  if (aircraftType && !OPTIONS.casAircraft.includes(aircraftType)) {
+    $("#entryAircraftType").insertAdjacentHTML("beforeend", `<option value="${escapeHTML(aircraftType)}">${escapeHTML(aircraftType)}</option>`);
+  }
+  $("#entryAircraftType").value = aircraftType;
+  const aircraftNationality = entry?.aircraft?.[0]?.nationality || "GBR";
+  if (!OPTIONS.aircraftNationalities.includes(aircraftNationality)) {
+    $("#entryAircraftNationality").insertAdjacentHTML("beforeend", `<option value="${escapeHTML(aircraftNationality)}">${escapeHTML(aircraftNationality)}</option>`);
+  }
+  $("#entryAircraftNationality").value = aircraftNationality;
   $("#entryOrdnanceQty").value = entry?.ordnance?.[0]?.quantity || 1;
   $("#entryOrdnanceType").value = entry?.ordnance?.[0]?.type || "";
   $("#entrySuccessful").value = String(entry?.successful ?? true);
   $("#entryEnvironment").value = entry?.environment || "Ground";
   $("#entryControlType").value = entry?.controlType || "Type 1";
   $("#entryAttackMethod").value = entry?.attackMethod || "BOT";
-  $("#entryAircraftCategory").value = entry?.aircraftCategory || "Fixed Wing CAS";
+  $("#entryAircraftCategory").value = entry?.aircraftCategory || OPTIONS.aircraftCategories[0] || "";
   $("#entryControllerStatus").value = entry?.controllerStatus || "JTAC-Q";
   $("#entryCmp").checked = Boolean(entry?.cmp);
+  $("#entrySelfVerified").checked = Boolean(entry?.verification?.selfVerified);
   $("#entryVerifierName").value = entry?.verification?.name || "";
   $("#entryVerifierRank").value = entry?.verification?.rank || "";
-  $("#entryVerifierAppointment").value = entry?.verification?.appointment || "";
   $("#entryVerificationDate").value = entry?.verification?.date ? String(entry.verification.date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  applySelfVerificationState();
   $("#entryDialog").showModal();
 }
 
 async function saveEntryFromForm() {
   if (!requireUser()) return;
   const id = $("#entryId").value || uid();
+  const selfVerified = $("#entrySelfVerified").checked;
   const verifierName = $("#entryVerifierName").value.trim();
+  const verificationDate = $("#entryVerificationDate").value || new Date().toISOString().slice(0, 10);
   const entry = {
     id,
     date: parseDate($("#entryDate").value).toISOString(),
@@ -758,17 +940,19 @@ async function saveEntryFromForm() {
     aircraft: [{
       quantity: Math.max(1, Number($("#entryAircraftQty").value || 1)),
       type: $("#entryAircraftType").value.trim(),
-      nationality: $("#entryAircraftNationality").value.trim().toUpperCase() || "GBR"
+      nationality: $("#entryAircraftNationality").value || "GBR"
     }],
     ordnance: $("#entryOrdnanceType").value.trim() ? [{
       quantity: Math.max(1, Number($("#entryOrdnanceQty").value || 1)),
       type: $("#entryOrdnanceType").value.trim()
     }] : [],
-    verification: verifierName ? {
+    verification: selfVerified ? {
+      selfVerified: true,
+      date: verificationDate
+    } : verifierName ? {
       name: verifierName,
       rank: $("#entryVerifierRank").value.trim(),
-      appointment: $("#entryVerifierAppointment").value.trim(),
-      date: $("#entryVerificationDate").value || new Date().toISOString().slice(0, 10)
+      date: verificationDate
     } : null,
     updatedAt: new Date().toISOString()
   };
@@ -847,6 +1031,31 @@ function entryFromHTMLCells(cells) {
   const [day, month, year] = cells[0].split("/");
   const aircraftMatch = cells[2].match(/^\s*(\d+)\s*x\s*(.+?)\s+([A-Z]{3})\s*$/);
   const marked = (index) => Boolean((cells[index] || "").trim());
+  const markColumns = [
+    [17, "Laser"],
+    [18, "IR"],
+    [19, "Keyhole"],
+    [20, "Talk-On"],
+    [21, "No Mark"],
+    [22, "DRP"],
+    [23, "Link 16 Handover"]
+  ];
+  const constraintColumns = [
+    [24, "Remote Observer"],
+    [25, "VDL/FMV"],
+    [26, "Hot"],
+    [27, "Non-Permissive"],
+    [28, "SEAD"],
+    [29, "Urban"],
+    [30, "JTAC/FAC(A)"],
+    [31, "Day"],
+    [32, "Low Level TTPs"],
+    [33, "Night FW CAS"],
+    [34, "Night TTPs"],
+    [35, "Danger Area"],
+    [36, "Supervised"],
+    [37, "Aviator"]
+  ];
   return {
     id: uid(),
     date: new Date(`${year}-${month}-${day}T12:00:00`).toISOString(),
@@ -858,8 +1067,8 @@ function entryFromHTMLCells(cells) {
     controlType: marked(10) ? "Type 1" : marked(11) ? "Type 2" : "Type 3",
     attackMethod: marked(14) ? "BOC" : "BOT",
     aircraftCategory: marked(16) ? "Rotary Wing CAS" : "Fixed Wing CAS",
-    marks: OPTIONS.marks.filter((_, index) => marked(17 + index)),
-    constraints: OPTIONS.constraints.filter((_, index) => marked(26 + index)),
+    marks: markColumns.filter(([index]) => marked(index)).map(([, value]) => value),
+    constraints: constraintColumns.filter(([index]) => marked(index)).map(([, value]) => value),
     cmp: marked(43),
     controllerStatus: OPTIONS.controllerStatuses.includes(cells[44]) ? cells[44] : "JTAC-Q",
     aircraft: aircraftMatch ? [{ quantity: Number(aircraftMatch[1]), type: aircraftMatch[2], nationality: aircraftMatch[3] }] : [{ quantity: 1, type: cells[2] || "Unknown", nationality: "" }],
@@ -993,6 +1202,8 @@ $("#entryForm").addEventListener("submit", (event) => {
   event.preventDefault();
   saveEntryFromForm().catch((error) => setStatus(error.message || "Unable to save control."));
 });
+
+$("#entrySelfVerified").addEventListener("change", applySelfVerificationState);
 
 $("#deleteEntry").addEventListener("click", () => {
   const id = $("#entryId").value;

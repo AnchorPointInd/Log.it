@@ -303,6 +303,18 @@ button {
   font-size: 28px;
 }
 
+.requirement-tile {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.requirement-tile.is-missing {
+  border-color: color-mix(in srgb, var(--red) 70%, var(--line));
+}
+
 .stack {
   display: grid;
   gap: 12px;
@@ -457,6 +469,12 @@ label {
 .check-row input {
   width: auto;
   min-height: auto;
+}
+
+.form-check-row {
+  min-height: 40px;
+  align-self: end;
+  color: var(--text);
 }
 
 .report {
