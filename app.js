@@ -1,5 +1,5 @@
 const STORE_KEY = "jtac-logbook-web-v1";
-const USERNAME_AUTH_DOMAIN = "jtaclogbook.com";
+const USERNAME_AUTH_DOMAIN = "JTAC.it";
 const INTERNAL_AUTH_DOMAINS = [USERNAME_AUTH_DOMAIN, "users.jtac-logbook.app", "jtac-logbook.local"];
 const SUPABASE_URL = "https://gildqlfchrsmdovhvyuj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_pPG2UaFree6CgIyFB5UAIA_bL6nLKqD";
@@ -277,7 +277,8 @@ function hasValidInternalAuthDomain() {
 
 function displayIdentifierFromUser(user) {
   const email = user?.email || "";
-  const internalDomain = INTERNAL_AUTH_DOMAINS.find((domain) => email.endsWith(`@${domain}`));
+  const normalizedEmail = email.toLowerCase();
+  const internalDomain = INTERNAL_AUTH_DOMAINS.find((domain) => normalizedEmail.endsWith(`@${domain.toLowerCase()}`));
   return internalDomain ? email.slice(0, -internalDomain.length - 1) : email;
 }
 

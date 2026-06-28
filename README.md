@@ -10,7 +10,7 @@ Use the live app here:
 
 The web app opens on a username/password sign-in screen and stores signed-in users' controls in Supabase. Public self-service signup is disabled; accounts are created by an admin. Settings -> Export Data / Backup remains available for a local JSON backup.
 
-To create an account, add a Supabase Auth user with email `<username>@jtaclogbook.com` and a password, then add a matching row in `profiles` with that user's `user_id`, visible username in `email`, rank, name and service number. Users sign in with only the `<username>` part.
+To create an account, add a Supabase Auth user with email `<username>@JTAC.it` and a password, then add a matching row in `profiles` with that user's `user_id`, visible username in `email`, rank, name and service number. Users sign in with only the `<username>` part.
 
 Admin visibility is controlled in Supabase through the `app_admins` table. Add the admin user's Supabase auth `user_id` to that table after the admin account has been created.
 
