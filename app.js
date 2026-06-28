@@ -1241,6 +1241,93 @@ function generateLogbookReport(rows) {
   </div>`;
 }
 
+function reportPrintStyles() {
+  return `
+    @page { size: A4 landscape; margin: 0.54in 0.75in 0.51in 0.75in; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; color: #000; background: #fff; font-family: Tahoma, Arial, sans-serif; }
+    .report { color: #000; background: #fff; }
+    .report h1, .report h2, .report p { margin: 0 0 10px; }
+    .report table { width: 100%; border-collapse: collapse; }
+    .report th, .report td { border: 1px solid #000; padding: 4px; text-align: left; }
+    .legacy-logbook-report { font-family: Tahoma, Arial, sans-serif; }
+    .legacy-logbook-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      color: #000;
+      background: #fff;
+      font-family: Tahoma, Arial, sans-serif;
+      font-size: 6.5px;
+      line-height: 1.1;
+    }
+    .legacy-logbook-table col.wide { width: 58px; }
+    .legacy-logbook-table col.narrow { width: 20px; }
+    .legacy-logbook-table col.status { width: 34px; }
+    .legacy-logbook-table col.verifier { width: 92px; }
+    .legacy-logbook-table td {
+      border: 0.5pt solid #000;
+      padding: 2px;
+      text-align: center;
+      vertical-align: middle;
+      overflow-wrap: anywhere;
+    }
+    .legacy-logbook-table .legacy-title td,
+    .legacy-logbook-table .legacy-meta td {
+      height: 30px;
+      font-weight: 700;
+    }
+    .legacy-logbook-table .xl67,
+    .legacy-logbook-table .xl29 {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      white-space: normal;
+    }
+    .legacy-logbook-table .xl67 { height: 68px; }
+    .legacy-logbook-table .xl68,
+    .legacy-logbook-table .xl69,
+    .legacy-logbook-table .xl70,
+    .legacy-logbook-table .xl78,
+    .legacy-logbook-table .xl81,
+    .legacy-logbook-table .xl84 {
+      font-weight: 700;
+    }
+    .legacy-logbook-table .xl26,
+    .legacy-logbook-table .xl27,
+    .legacy-logbook-table .xl28,
+    .legacy-logbook-table .xl29 {
+      height: 35px;
+      font-size: 6.5px;
+    }
+  `;
+}
+
+function printReportDocument(title, content) {
+  const frame = document.createElement("iframe");
+  frame.title = title;
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.position = "fixed";
+  frame.style.left = "-10000px";
+  frame.style.top = "0";
+  frame.style.width = "1123px";
+  frame.style.height = "794px";
+  frame.style.border = "0";
+  frame.style.pointerEvents = "none";
+  frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(title)}</title><style>${reportPrintStyles()}</style></head><body>${content}</body></html>`;
+  frame.addEventListener("load", () => {
+    const printWindow = frame.contentWindow;
+    if (!printWindow) return;
+    const cleanup = () => frame.remove();
+    printWindow.addEventListener("afterprint", cleanup, { once: true });
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      setTimeout(cleanup, 30000);
+    }, 100);
+  }, { once: true });
+  document.body.appendChild(frame);
+}
+
 function saveProfile() {
   const previousProfile = state.profile || {};
   const data = new FormData($("#profileForm"));
@@ -1277,12 +1364,7 @@ function generateReport(type) {
       <tbody>${snapshot.requirements.map((item) => `<tr><td>${escapeHTML(item.label || item.name)}</td><td>${item.completed}</td><td>${item.required}</td><td>${item.remaining}</td><td>${item.expiryDate ? shortDate(item.expiryDate) : "Due now"}</td></tr>`).join("")}</tbody></table>
     </div>` : generateLogbookReport(rows);
   $("#printArea").innerHTML = content;
-  const previousTitle = document.title;
-  document.title = type === "currency" ? "JTAC Currency Summary" : "Logbook";
-  window.addEventListener("afterprint", () => {
-    document.title = previousTitle;
-  }, { once: true });
-  setTimeout(() => window.print(), 50);
+  printReportDocument(type === "currency" ? "JTAC Currency Summary" : "Logbook", content);
 }
 
 document.addEventListener("click", async (event) => {
