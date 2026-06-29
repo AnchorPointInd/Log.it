@@ -23,7 +23,8 @@ const OPTIONS = {
     "LAND 5 RA",
     "LAND 1 DRS",
     "LAND 3 DRS",
-    "LAND 100 RA"
+    "LAND 100 RA",
+    "Archive (for JTACs no longer in a JTAC PID)"
   ],
   controllerStatuses: ["JTAC-IQ", "JTAC-Q", "FAC(A)", "Instructor"],
   aircraftNationalities: [
@@ -991,6 +992,7 @@ function renderAdmin() {
         <div class="toolbar">
           <button class="button secondary" type="button" data-action="adminSelectUser" data-id="${escapeHTML(profile.user_id)}">${profile.user_id === selectedAdminUserId ? "Selected" : "View Controls"}</button>
           <button class="button secondary" type="submit">Save User</button>
+          <button class="button ghost" type="button" data-action="adminDeleteUser" data-id="${escapeHTML(profile.user_id)}" data-label="${escapeHTML([profile.rank, profile.name, profile.email].filter(Boolean).join(" ") || "this user")}">Delete User</button>
         </div>
       </div>
       <div class="form-grid">
@@ -1438,6 +1440,21 @@ async function deleteAdminControl(id) {
   if (error) throw error;
   await loadAdminData();
   setStatus("Control deleted.");
+  renderAdmin();
+}
+
+async function deleteAdminUser(userId) {
+  if (!isAdmin) return;
+  if (!userId) throw new Error("User not found.");
+  if (userId === currentUser?.id) throw new Error("You cannot delete your own account while signed in.");
+  setStatus("Deleting user...");
+  const { error } = await supabaseClient.functions.invoke("admin-delete-user", {
+    body: { userId }
+  });
+  if (error) throw await readableFunctionError(error);
+  if (selectedAdminUserId === userId) selectedAdminUserId = "";
+  await loadAdminData();
+  setStatus("User deleted.");
   renderAdmin();
 }
 
@@ -2012,6 +2029,13 @@ document.addEventListener("click", async (event) => {
   }
   if (target.dataset.action === "adminDeleteControl" && confirm("Delete this control?")) {
     await deleteAdminControl(target.dataset.id).catch((error) => setStatus(error.message || "Unable to delete control."));
+    return;
+  }
+  if (target.dataset.action === "adminDeleteUser") {
+    const label = target.dataset.label || "this user";
+    if (confirm(`Delete ${label}? This removes the account, profile, formation senior role, admin role, and all controls.`)) {
+      await deleteAdminUser(target.dataset.id).catch((error) => setStatus(error.message || "Unable to delete user."));
+    }
     return;
   }
   if (target.dataset.action === "formationDeleteControl" && confirm("Delete this unit control?")) {
