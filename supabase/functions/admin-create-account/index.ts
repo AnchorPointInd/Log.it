@@ -48,6 +48,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const username = normalizeIdentifier(body.username);
   const password = String(body.password || "");
+  const requestId = String(body.requestId || "").trim();
   if (!/^[a-z0-9][a-z0-9._-]{0,62}$/.test(username)) {
     return jsonResponse({ error: "Use a valid username." }, 400);
   }
@@ -55,6 +56,17 @@ Deno.serve(async (req) => {
 
   const email = `${username}@${USERNAME_AUTH_DOMAIN}`;
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+  if (requestId) {
+    const { data: request, error: requestError } = await serviceClient
+      .from("account_requests")
+      .select("id,status")
+      .eq("id", requestId)
+      .maybeSingle();
+    if (requestError) return jsonResponse({ error: requestError.message }, 500);
+    if (!request || request.status !== "pending") {
+      return jsonResponse({ error: "Account request is not pending." }, 400);
+    }
+  }
   const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
     email,
     password,
@@ -83,6 +95,20 @@ Deno.serve(async (req) => {
     updated_at: new Date().toISOString()
   }, { onConflict: "user_id" });
   if (profileError) return jsonResponse({ error: profileError.message }, 500);
+
+  if (requestId) {
+    const { error: requestUpdateError } = await serviceClient
+      .from("account_requests")
+      .update({
+        status: "approved",
+        reviewed_by: userData.user.id,
+        reviewed_at: new Date().toISOString(),
+        approved_user_id: userId,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", requestId);
+    if (requestUpdateError) return jsonResponse({ error: requestUpdateError.message }, 500);
+  }
 
   return jsonResponse({ userId, username });
 });
