@@ -191,11 +191,15 @@ button {
   gap: 12px;
 }
 
-.admin-only {
+.admin-only, .formation-senior-only {
   display: none;
 }
 
 .is-admin .admin-only {
+  display: block;
+}
+
+.is-formation-senior .formation-senior-only {
   display: block;
 }
 

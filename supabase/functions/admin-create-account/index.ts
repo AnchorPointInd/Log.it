@@ -94,6 +94,9 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Use a valid username." }, 400);
   }
   if (!isValidEmail(contactEmail)) return jsonResponse({ error: "Use a valid email address." }, 400);
+  if (Boolean(body.formationSeniorRequested) && !String(body.unit || "").trim()) {
+    return jsonResponse({ error: "Set a unit before granting formation senior access." }, 400);
+  }
 
   const email = `${username}@${USERNAME_AUTH_DOMAIN}`;
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
@@ -140,6 +143,21 @@ Deno.serve(async (req) => {
     updated_at: new Date().toISOString()
   }, { onConflict: "user_id" });
   if (profileError) return jsonResponse({ error: profileError.message }, 500);
+
+  if (Boolean(body.formationSeniorRequested) && String(body.unit || "").trim()) {
+    const { error: seniorError } = await serviceClient
+      .from("app_formation_seniors")
+      .upsert({
+        user_id: userId,
+        unit: String(body.unit || ""),
+        updated_at: new Date().toISOString()
+      }, { onConflict: "user_id" });
+    if (seniorError) {
+      await serviceClient.from("profiles").delete().eq("user_id", userId);
+      await serviceClient.auth.admin.deleteUser(userId);
+      return jsonResponse({ error: seniorError.message }, 500);
+    }
+  }
 
   try {
     await sendApprovalEmail(contactEmail, username);
