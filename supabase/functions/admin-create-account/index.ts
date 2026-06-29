@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const USERNAME_AUTH_DOMAIN = "jtac.it";
+const TEMPORARY_PASSWORD = "password123";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -17,6 +18,46 @@ function jsonResponse(body: unknown, status = 200) {
 
 function normalizeIdentifier(value: unknown) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeEmail(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+async function sendApprovalEmail(to: string, username: string) {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  const emailFrom = Deno.env.get("ACCOUNT_EMAIL_FROM") || "JTAC Logbook <onboarding@resend.dev>";
+  if (!resendApiKey) throw new Error("Email service is not configured. Set RESEND_API_KEY in Supabase Edge Function secrets.");
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from: emailFrom,
+      to,
+      subject: "JTAC Logbook account approved",
+      text: [
+        "Your JTAC Logbook account has been approved.",
+        "",
+        `Username: ${username}`,
+        `Temporary password: ${TEMPORARY_PASSWORD}`,
+        "",
+        "You will be required to set a new password the first time you sign in."
+      ].join("\n")
+    })
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Email send failed: ${body || response.statusText}`);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -47,19 +88,19 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({}));
   const username = normalizeIdentifier(body.username);
-  const password = String(body.password || "");
+  const contactEmail = normalizeEmail(body.contactEmail);
   const requestId = String(body.requestId || "").trim();
   if (!/^[a-z0-9][a-z0-9._-]{0,62}$/.test(username)) {
     return jsonResponse({ error: "Use a valid username." }, 400);
   }
-  if (password.length < 6) return jsonResponse({ error: "Password must be at least 6 characters." }, 400);
+  if (!isValidEmail(contactEmail)) return jsonResponse({ error: "Use a valid email address." }, 400);
 
   const email = `${username}@${USERNAME_AUTH_DOMAIN}`;
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
   if (requestId) {
     const { data: request, error: requestError } = await serviceClient
       .from("account_requests")
-      .select("id,status")
+      .select("id,status,contact_email")
       .eq("id", requestId)
       .maybeSingle();
     if (requestError) return jsonResponse({ error: requestError.message }, 500);
@@ -69,12 +110,14 @@ Deno.serve(async (req) => {
   }
   const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
     email,
-    password,
+    password: TEMPORARY_PASSWORD,
     email_confirm: true,
     user_metadata: {
+      contactEmail,
       name: String(body.name || ""),
       rank: String(body.rank || ""),
-      serviceNumber: String(body.serviceNumber || "")
+      serviceNumber: String(body.serviceNumber || ""),
+      requirePasswordChange: true
     }
   });
   if (createError) return jsonResponse({ error: createError.message }, 400);
@@ -85,6 +128,7 @@ Deno.serve(async (req) => {
   const { error: profileError } = await serviceClient.from("profiles").upsert({
     user_id: userId,
     email: username,
+    contact_email: contactEmail,
     name: String(body.name || ""),
     rank: String(body.rank || ""),
     service_number: String(body.serviceNumber || ""),
@@ -92,9 +136,18 @@ Deno.serve(async (req) => {
     capbadge: String(body.capbadge || ""),
     qualification: String(body.qualification || ""),
     formation_senior_requested: Boolean(body.formationSeniorRequested),
+    require_password_change: true,
     updated_at: new Date().toISOString()
   }, { onConflict: "user_id" });
   if (profileError) return jsonResponse({ error: profileError.message }, 500);
+
+  try {
+    await sendApprovalEmail(contactEmail, username);
+  } catch (error) {
+    await serviceClient.from("profiles").delete().eq("user_id", userId);
+    await serviceClient.auth.admin.deleteUser(userId);
+    return jsonResponse({ error: error instanceof Error ? error.message : "Unable to send approval email." }, 500);
+  }
 
   if (requestId) {
     const { error: requestUpdateError } = await serviceClient

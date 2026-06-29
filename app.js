@@ -367,9 +367,11 @@ function dbProfileToState(row) {
   if (!row) return {};
   return {
     email: row.email || "",
+    contactEmail: row.contact_email || "",
     name: row.name || "",
     rank: row.rank || "",
     serviceNumber: row.service_number || "",
+    requirePasswordChange: Boolean(row.require_password_change),
     formationSeniorRequested: Boolean(row.formation_senior_requested),
     formationSeniorRequestedAt: row.formation_senior_requested_at || "",
     unit: row.unit || "",
@@ -388,9 +390,11 @@ function stateProfileToDb(profile) {
   return {
     user_id: currentUser.id,
     email: displayIdentifierFromUser(currentUser) || profile.email || "",
+    contact_email: profile.contactEmail || "",
     name: profile.name || "",
     rank: profile.rank || "",
     service_number: profile.serviceNumber || "",
+    require_password_change: Boolean(profile.requirePasswordChange),
     formation_senior_requested: formationSeniorRequested,
     formation_senior_requested_at: formationSeniorRequested
       ? (profile.formationSeniorRequestedAt || new Date().toISOString())
@@ -421,6 +425,10 @@ function isValidAuthIdentifier(value) {
   return identifier.includes("@") || /^[a-z0-9][a-z0-9._-]{0,62}$/.test(identifier);
 }
 
+function isValidContactEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
 function hasValidInternalAuthDomain() {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(USERNAME_AUTH_DOMAIN);
 }
@@ -437,9 +445,11 @@ function profileFromUserMetadata(user) {
   const formationSeniorRequested = Boolean(metadata.formationSeniorRequested);
   return {
     email: displayIdentifierFromUser(user),
+    contactEmail: metadata.contactEmail || "",
     rank: metadata.rank || "",
     name: metadata.name || "",
     serviceNumber: metadata.serviceNumber || "",
+    requirePasswordChange: Boolean(metadata.requirePasswordChange),
     formationSeniorRequested,
     formationSeniorRequestedAt: formationSeniorRequested
       ? (metadata.formationSeniorRequestedAt || new Date().toISOString())
@@ -584,6 +594,11 @@ function render() {
     renderAuthPanel();
     return;
   }
+  if (state.profile?.requirePasswordChange) {
+    renderPasswordChangeRequired();
+    renderAuthPanel();
+    return;
+  }
   if (activeView === "admin" && !isAdmin) activeView = "dashboard";
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === activeView));
   $$(".view").forEach((view) => view.classList.remove("active"));
@@ -595,6 +610,30 @@ function render() {
   renderSettings();
   renderAdmin();
   renderAuthPanel();
+}
+
+function renderPasswordChangeRequired() {
+  document.body.classList.add("signed-out");
+  $$(".view").forEach((view) => view.classList.remove("active"));
+  $("#dashboardView").classList.add("active");
+  $("#dashboardView").innerHTML = `
+    <div class="auth-screen">
+      <section class="auth-card">
+        <div>
+          <p class="eyebrow">JTAC Logbook</p>
+          <h1>Set Password</h1>
+        </div>
+        <form id="passwordChangeForm" class="stack">
+          <div class="form-grid">
+            <label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+            <label>Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+          </div>
+          <button class="button primary" type="submit">Update Password</button>
+        </form>
+        <p class="entry-meta">You must set a new password before using the logbook.</p>
+        <p class="entry-meta" id="authStatus">${escapeHTML(syncStatus)}</p>
+      </section>
+    </div>`;
 }
 
 function renderSignedOut() {
@@ -616,6 +655,7 @@ function renderSignedOut() {
           <div class="form-grid">
             <label>Username<input id="authEmail" name="username" type="text" autocomplete="username" required></label>
             ${isRequestMode ? `
+              <label>Email address<input name="contactEmail" type="email" autocomplete="email" required></label>
               <label>Name<input name="name" autocomplete="name" required></label>
               <label>Rank<input name="rank" autocomplete="off"></label>
               <label>Service number<input name="serviceNumber" autocomplete="off"></label>
@@ -816,6 +856,7 @@ function renderSettings() {
         <p class="section-label">User Profile</p>
         <div class="form-grid">
           ${profileInput("name", "Name", profile.name)}
+          ${profileInput("contactEmail", "Email Address", profile.contactEmail, "email")}
           ${profileInput("rank", "Rank", profile.rank)}
           ${profileInput("serviceNumber", "Service Number", profile.serviceNumber)}
           <label>Unit<select name="unit"><option value="">Not Set</option>${unitOptionsHTML(profile.unit)}</select></label>
@@ -875,6 +916,7 @@ function renderAdmin() {
       </div>
       <div class="form-grid">
         <label>Visible username<input name="email" value="${escapeHTML(profile.email || "")}" autocomplete="off"></label>
+        <label>Email address<input name="contact_email" type="email" value="${escapeHTML(profile.contact_email || "")}" autocomplete="off"></label>
         <label>Name<input name="name" value="${escapeHTML(profile.name || "")}" autocomplete="off"></label>
         <label>Rank<input name="rank" value="${escapeHTML(profile.rank || "")}" autocomplete="off"></label>
         <label>Service number<input name="service_number" value="${escapeHTML(profile.service_number || "")}" autocomplete="off"></label>
@@ -909,7 +951,7 @@ function renderAdmin() {
         <form id="adminCreateAccountForm" class="stack">
           <div class="form-grid">
             <label>Username<input name="username" required autocomplete="off"></label>
-            <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+            <label>Email address<input name="contactEmail" type="email" required autocomplete="off"></label>
             <label>Name<input name="name" autocomplete="off"></label>
             <label>Rank<input name="rank" autocomplete="off"></label>
             <label>Service number<input name="serviceNumber" autocomplete="off"></label>
@@ -947,7 +989,7 @@ function adminRequestFormHTML(request) {
       </div>
       <div class="form-grid">
         <label>Username<input name="username" value="${escapeHTML(request.username || "")}" required autocomplete="off"></label>
-        <label>Initial password<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+        <label>Email address<input name="contactEmail" type="email" value="${escapeHTML(request.contact_email || "")}" required autocomplete="off"></label>
         <label>Name<input name="name" value="${escapeHTML(request.name || "")}" autocomplete="off"></label>
         <label>Rank<input name="rank" value="${escapeHTML(request.rank || "")}" autocomplete="off"></label>
         <label>Service number<input name="serviceNumber" value="${escapeHTML(request.service_number || "")}" autocomplete="off"></label>
@@ -1003,12 +1045,14 @@ async function createAdminAccount(form) {
   if (!isAdmin) return;
   const values = formDataObject(form);
   const requestId = form.dataset.requestId || null;
+  if (!isValidContactEmail(values.contactEmail || "")) throw new Error("Enter a valid email address.");
   setStatus(requestId ? "Approving account request..." : "Creating account...");
   const { error } = await supabaseClient.functions.invoke("admin-create-account", {
     body: {
       ...values,
       username: normalizeAuthIdentifier(values.username || ""),
       requestId,
+      contactEmail: String(values.contactEmail || "").trim(),
       formationSeniorRequested: Boolean(form.elements.formationSeniorRequested?.checked)
     }
   });
@@ -1045,9 +1089,15 @@ async function requestAccount(form) {
     setStatus("Use letters, numbers, dots, hyphens or underscores for username.");
     return;
   }
+  const contactEmail = String(values.contactEmail || "").trim();
+  if (!isValidContactEmail(contactEmail)) {
+    setStatus("Enter a valid email address.");
+    return;
+  }
   setStatus("Submitting account request...");
   const { error } = await supabaseClient.from("account_requests").insert({
     username,
+    contact_email: contactEmail,
     name: values.name || "",
     rank: values.rank || "",
     service_number: values.serviceNumber || "",
@@ -1075,6 +1125,7 @@ async function saveAdminProfile(form) {
   const payload = {
     user_id: userId,
     email: normalizeAuthIdentifier(values.email || ""),
+    contact_email: String(values.contact_email || "").trim(),
     name: values.name || "",
     rank: values.rank || "",
     service_number: values.service_number || "",
@@ -1139,6 +1190,27 @@ async function deleteAdminControl(id) {
   await loadAdminData();
   setStatus("Control deleted.");
   renderAdmin();
+}
+
+async function changeRequiredPassword(form) {
+  const values = formDataObject(form);
+  const password = String(values.password || "");
+  const confirmPassword = String(values.confirmPassword || "");
+  if (password.length < 8) throw new Error("Password must be at least 8 characters.");
+  if (password === "password123") throw new Error("Choose a different password from the temporary password.");
+  if (password !== confirmPassword) throw new Error("Passwords do not match.");
+  setStatus("Updating password...");
+  const { error: authError } = await supabaseClient.auth.updateUser({ password });
+  if (authError) throw authError;
+  const { error: profileError } = await supabaseClient
+    .from("profiles")
+    .update({ require_password_change: false, updated_at: new Date().toISOString() })
+    .eq("user_id", currentUser.id);
+  if (profileError) throw profileError;
+  state.profile.requirePasswordChange = false;
+  saveState();
+  setStatus("Password updated.");
+  render();
 }
 
 function profileInput(name, label, value = "", type = "text") {
@@ -1627,6 +1699,7 @@ function saveProfile() {
   const data = new FormData($("#profileForm"));
   state.profile = Object.fromEntries(data.entries());
   state.profile.email = displayIdentifierFromUser(currentUser) || state.profile.email || "";
+  state.profile.requirePasswordChange = Boolean(previousProfile.requirePasswordChange);
   state.profile.formationSeniorRequested = data.get("formationSeniorRequested") === "true";
   state.profile.formationSeniorRequestedAt = state.profile.formationSeniorRequested
     ? (previousProfile.formationSeniorRequestedAt || new Date().toISOString())
@@ -1723,6 +1796,11 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  if (event.target.id === "passwordChangeForm") {
+    event.preventDefault();
+    await changeRequiredPassword(event.target).catch((error) => setStatus(error.message || "Unable to update password."));
+    return;
+  }
   if (event.target.id === "accountRequestForm") {
     event.preventDefault();
     await requestAccount(event.target).catch((error) => setStatus(error.message || "Unable to submit account request."));
