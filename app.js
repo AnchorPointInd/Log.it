@@ -817,27 +817,61 @@ function renderAdmin() {
   }, {});
   const profilesByUser = new Map(adminProfiles.map((profile) => [profile.user_id, profile]));
   const accountRows = adminProfiles.map((profile) => `
-    <article class="entry-row">
-      <div class="date-box"><strong>${controlsByUser[profile.user_id] || 0}</strong><span>CTRL</span></div>
-      <div>
-        <p class="entry-title">${escapeHTML([profile.rank, profile.name].filter(Boolean).join(" ") || profile.email || "Unnamed account")}</p>
-        <div class="entry-meta">${escapeHTML([profile.email, profile.service_number].filter(Boolean).join(" | "))}</div>
-        <div class="pill-row">
-          <span class="pill">${profile.formation_senior_requested ? "Formation senior requested" : "Standard access"}</span>
-          ${profile.formation_senior_requested_at ? `<span class="pill">${shortDate(profile.formation_senior_requested_at)}</span>` : ""}
+    <form class="panel stack admin-profile-form" data-user-id="${escapeHTML(profile.user_id)}">
+      <div class="page-head compact">
+        <div>
+          <p class="section-label">${controlsByUser[profile.user_id] || 0} controls</p>
+          <h3>${escapeHTML([profile.rank, profile.name].filter(Boolean).join(" ") || profile.email || "Unnamed account")}</h3>
         </div>
+        <button class="button secondary" type="submit">Save User</button>
       </div>
-    </article>`).join("");
-  const recentControls = adminControls.slice(0, 12).map((control) => {
+      <div class="form-grid">
+        <label>Visible username<input name="email" value="${escapeHTML(profile.email || "")}" autocomplete="off"></label>
+        <label>Name<input name="name" value="${escapeHTML(profile.name || "")}" autocomplete="off"></label>
+        <label>Rank<input name="rank" value="${escapeHTML(profile.rank || "")}" autocomplete="off"></label>
+        <label>Service number<input name="service_number" value="${escapeHTML(profile.service_number || "")}" autocomplete="off"></label>
+        <label>Unit<input name="unit" value="${escapeHTML(profile.unit || "")}" autocomplete="off"></label>
+        <label>Capbadge<input name="capbadge" value="${escapeHTML(profile.capbadge || "")}" autocomplete="off"></label>
+        <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses, profile.qualification || "")}</select></label>
+        <label>Initial qualification date<input name="initial_qualification_date" type="date" value="${escapeHTML(profile.initial_qualification_date || "")}"></label>
+        <label>PMS training date<input name="pms_training_date" type="date" value="${escapeHTML(profile.pms_training_date || "")}"></label>
+        <label>PMS proficiency date<input name="pms_proficiency_date" type="date" value="${escapeHTML(profile.pms_proficiency_date || "")}"></label>
+        <label>Annual evaluation date<input name="annual_evaluation_date" type="date" value="${escapeHTML(profile.annual_evaluation_date || "")}"></label>
+        <label>Evaluation waiver number<input name="evaluation_waiver_number" value="${escapeHTML(profile.evaluation_waiver_number || "")}" autocomplete="off"></label>
+        <label class="check-row form-check-row"><input name="formation_senior_requested" type="checkbox" ${profile.formation_senior_requested ? "checked" : ""}> Formation senior</label>
+      </div>
+    </form>`).join("");
+  const recentControls = adminControls.slice(0, 25).map((control) => {
     const profile = profilesByUser.get(control.user_id) || {};
     return `
-      <article class="entry-row">
-        <div class="date-box"><strong>${dayLabel(control.date)}</strong><span>${monthLabel(control.date)}</span></div>
-        <div>
-          <p class="entry-title">${escapeHTML(control.location || "Unknown location")}</p>
-          <div class="entry-meta">${escapeHTML([profile.rank, profile.name, control.control_type, control.aircraft?.[0]?.type].filter(Boolean).join(" | "))}</div>
+      <form class="panel stack admin-control-form" data-control-id="${escapeHTML(control.id)}">
+        <div class="page-head compact">
+          <div>
+            <p class="section-label">${escapeHTML([profile.rank, profile.name, profile.email].filter(Boolean).join(" ") || "Unknown user")}</p>
+            <h3>${escapeHTML(control.location || "Unknown location")}</h3>
+          </div>
+          <div class="toolbar">
+            <button class="button secondary" type="submit">Save Control</button>
+            <button class="button ghost" type="button" data-action="adminDeleteControl" data-id="${escapeHTML(control.id)}">Delete</button>
+          </div>
         </div>
-      </article>`;
+        <div class="form-grid">
+          <label>Date<input name="date" type="date" value="${escapeHTML(String(control.date || "").slice(0, 10))}"></label>
+          <label>Location<input name="location" value="${escapeHTML(control.location || "")}" autocomplete="off"></label>
+          <label>Exercise / Operation name<input name="exercise_operation" value="${escapeHTML(control.exercise_operation || "")}" autocomplete="off"></label>
+          <label>Successful<select name="successful"><option value="true" ${control.successful ? "selected" : ""}>Successful</option><option value="false" ${!control.successful ? "selected" : ""}>Unsuccessful</option></select></label>
+          <label>Environment<select name="environment">${optionsHTML(OPTIONS.environments, control.environment)}</select></label>
+          <label>Type of control<select name="control_type">${optionsHTML(OPTIONS.controlTypes, control.control_type)}</select></label>
+          <label>Method of attack<select name="attack_method">${optionsHTML(OPTIONS.attackMethods, control.attack_method)}</select></label>
+          <label>Aircraft category<select name="aircraft_category">${optionsHTML(OPTIONS.aircraftCategories, control.aircraft_category)}</select></label>
+          <label>Aircraft type<select name="aircraft_type"><option value="">Select aircraft</option>${optionsHTML(OPTIONS.casAircraft, control.aircraft?.[0]?.type || "")}</select></label>
+          <label>Aircraft quantity<input name="aircraft_quantity" type="number" min="1" max="24" value="${escapeHTML(control.aircraft?.[0]?.quantity || 1)}"></label>
+          <label>Aircraft nationality<select name="aircraft_nationality">${nationalityOptionsHTML(control.aircraft?.[0]?.nationality || "GBR")}</select></label>
+          <label>Controller status<select name="controller_status">${optionsHTML(OPTIONS.controllerStatuses, control.controller_status)}</select></label>
+          <label class="check-row form-check-row"><input name="cmp" type="checkbox" ${control.cmp ? "checked" : ""}> CMP</label>
+        </div>
+        <label class="full-field">Notes<textarea name="notes" rows="2">${escapeHTML(control.notes || "")}</textarea></label>
+      </form>`;
   }).join("");
   $("#adminView").innerHTML = `
     ${renderHeader("Admin")}
@@ -846,6 +880,23 @@ function renderAdmin() {
         ${metric("Accounts", adminProfiles.length)}
         ${metric("Senior requests", adminProfiles.filter((profile) => profile.formation_senior_requested).length)}
         ${metric("Controls", adminControls.length)}
+      </section>
+      <section class="panel stack">
+        <p class="section-label">Create account</p>
+        <form id="adminCreateAccountForm" class="stack">
+          <div class="form-grid">
+            <label>Username<input name="username" required autocomplete="off"></label>
+            <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+            <label>Name<input name="name" autocomplete="off"></label>
+            <label>Rank<input name="rank" autocomplete="off"></label>
+            <label>Service number<input name="serviceNumber" autocomplete="off"></label>
+            <label>Unit<input name="unit" autocomplete="off"></label>
+            <label>Capbadge<input name="capbadge" autocomplete="off"></label>
+            <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses)}</select></label>
+            <label class="check-row form-check-row"><input name="formationSeniorRequested" type="checkbox"> Formation senior</label>
+          </div>
+          <button class="button primary" type="submit">Create Account</button>
+        </form>
       </section>
       <section class="stack">
         <p class="section-label">Accounts</p>
@@ -856,6 +907,107 @@ function renderAdmin() {
         ${recentControls || `<div class="empty">No controls have been logged yet.</div>`}
       </section>
     </div>`;
+}
+
+function formDataObject(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+function nullableDate(value) {
+  return value ? String(value).slice(0, 10) : null;
+}
+
+async function createAdminAccount(form) {
+  if (!isAdmin) return;
+  const values = formDataObject(form);
+  setStatus("Creating account...");
+  const { error } = await supabaseClient.functions.invoke("admin-create-account", {
+    body: {
+      ...values,
+      username: normalizeAuthIdentifier(values.username || ""),
+      formationSeniorRequested: Boolean(form.elements.formationSeniorRequested?.checked)
+    }
+  });
+  if (error) throw error;
+  form.reset();
+  await loadAdminData();
+  setStatus("Account created.");
+  renderAdmin();
+}
+
+async function saveAdminProfile(form) {
+  if (!isAdmin) return;
+  const values = formDataObject(form);
+  const userId = form.dataset.userId;
+  const isFormationSenior = Boolean(form.elements.formation_senior_requested?.checked);
+  const existing = adminProfiles.find((profile) => profile.user_id === userId);
+  const payload = {
+    user_id: userId,
+    email: normalizeAuthIdentifier(values.email || ""),
+    name: values.name || "",
+    rank: values.rank || "",
+    service_number: values.service_number || "",
+    unit: values.unit || "",
+    capbadge: values.capbadge || "",
+    qualification: values.qualification || "",
+    initial_qualification_date: nullableDate(values.initial_qualification_date),
+    pms_training_date: nullableDate(values.pms_training_date),
+    pms_proficiency_date: nullableDate(values.pms_proficiency_date),
+    annual_evaluation_date: nullableDate(values.annual_evaluation_date),
+    evaluation_waiver_number: values.evaluation_waiver_number || "",
+    formation_senior_requested: isFormationSenior,
+    formation_senior_requested_at: isFormationSenior ? (existing?.formation_senior_requested_at || new Date().toISOString()) : null,
+    updated_at: new Date().toISOString()
+  };
+  setStatus("Saving user...");
+  const { error } = await supabaseClient.from("profiles").upsert(payload, { onConflict: "user_id" });
+  if (error) throw error;
+  await loadAdminData();
+  setStatus("User saved.");
+  renderAdmin();
+}
+
+async function saveAdminControl(form) {
+  if (!isAdmin) return;
+  const values = formDataObject(form);
+  const controlId = form.dataset.controlId;
+  const existing = adminControls.find((control) => control.id === controlId);
+  if (!existing) throw new Error("Control not found.");
+  const payload = {
+    date: parseDate(values.date).toISOString(),
+    location: values.location || "",
+    exercise_operation: values.exercise_operation || "",
+    notes: values.notes || "",
+    successful: values.successful === "true",
+    environment: values.environment || "Ground",
+    control_type: values.control_type || "Type 1",
+    attack_method: values.attack_method || "BOT",
+    aircraft_category: values.aircraft_category || OPTIONS.aircraftCategories[0] || "",
+    aircraft: [{
+      quantity: Math.max(1, Number(values.aircraft_quantity || 1)),
+      type: values.aircraft_type || existing.aircraft?.[0]?.type || "Unknown",
+      nationality: values.aircraft_nationality || "GBR"
+    }],
+    cmp: Boolean(form.elements.cmp?.checked),
+    controller_status: values.controller_status || "JTAC-Q",
+    updated_at: new Date().toISOString()
+  };
+  setStatus("Saving control...");
+  const { error } = await supabaseClient.from("controls").update(payload).eq("id", controlId);
+  if (error) throw error;
+  await loadAdminData();
+  setStatus("Control saved.");
+  renderAdmin();
+}
+
+async function deleteAdminControl(id) {
+  if (!isAdmin) return;
+  setStatus("Deleting control...");
+  const { error } = await supabaseClient.from("controls").delete().eq("id", id);
+  if (error) throw error;
+  await loadAdminData();
+  setStatus("Control deleted.");
+  renderAdmin();
 }
 
 function profileInput(name, label, value = "", type = "text") {
@@ -1374,6 +1526,7 @@ document.addEventListener("click", async (event) => {
   const target = event.target.closest("button");
   if (!target) return;
   if (target.closest("#authForm")) return;
+  if (target.type === "submit" && target.closest("form")) return;
   if (target.dataset.view) activeView = target.dataset.view;
   if (target.dataset.nav) activeView = target.dataset.nav;
   if (target.dataset.action === "add" || target.id === "quickAdd") openEntryDialog();
@@ -1381,6 +1534,10 @@ document.addEventListener("click", async (event) => {
   if (target.dataset.action === "import") $("#fileImport").click();
   if (target.dataset.action === "export") exportData();
   if (target.dataset.action === "closeDialog") $("#entryDialog").close();
+  if (target.dataset.action === "adminDeleteControl" && confirm("Delete this control?")) {
+    await deleteAdminControl(target.dataset.id).catch((error) => setStatus(error.message || "Unable to delete control."));
+    return;
+  }
   if (target.dataset.action === "signOut") {
     await supabaseClient.auth.signOut();
   }
@@ -1413,6 +1570,21 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  if (event.target.id === "adminCreateAccountForm") {
+    event.preventDefault();
+    await createAdminAccount(event.target).catch((error) => setStatus(error.message || "Unable to create account."));
+    return;
+  }
+  if (event.target.classList.contains("admin-profile-form")) {
+    event.preventDefault();
+    await saveAdminProfile(event.target).catch((error) => setStatus(error.message || "Unable to save user."));
+    return;
+  }
+  if (event.target.classList.contains("admin-control-form")) {
+    event.preventDefault();
+    await saveAdminControl(event.target).catch((error) => setStatus(error.message || "Unable to save control."));
+    return;
+  }
   if (event.target.id !== "authForm") return;
   event.preventDefault();
   const identifier = normalizeAuthIdentifier($("#authEmail").value);
