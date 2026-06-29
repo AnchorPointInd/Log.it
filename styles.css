@@ -519,17 +519,28 @@ label {
   .sidebar {
     position: static;
     height: auto;
+    overflow: hidden;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
   .nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: flex;
+    gap: 8px;
+    margin: 0 -22px 18px;
+    padding: 0 22px 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
   }
 
   .nav-item {
+    flex: 0 0 152px;
+    min-width: 152px;
     text-align: center;
     font-size: 12px;
+    white-space: nowrap;
   }
 
   .grid.two, .grid.three, .filters, .form-grid {
