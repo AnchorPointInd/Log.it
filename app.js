@@ -142,6 +142,7 @@ let currentUser = null;
 let isAdmin = false;
 let adminProfiles = [];
 let adminControls = [];
+let selectedAdminUserId = "";
 let syncStatus = "Sign in to sync controls.";
 let optionsLoaded = false;
 let filterState = {
@@ -453,6 +454,7 @@ async function loadRemoteState() {
   else {
     adminProfiles = [];
     adminControls = [];
+    selectedAdminUserId = "";
   }
   saveState();
   setStatus(`Signed in as ${displayIdentifierFromUser(currentUser)}.`);
@@ -540,6 +542,7 @@ async function bootstrapAuth() {
       optionsLoaded = false;
       adminProfiles = [];
       adminControls = [];
+      selectedAdminUserId = "";
       activeView = "dashboard";
       state = loadState();
       setStatus("Signed out.");
@@ -811,11 +814,15 @@ function renderAdmin() {
     $("#adminView").innerHTML = "";
     return;
   }
+  if (selectedAdminUserId && !adminProfiles.some((profile) => profile.user_id === selectedAdminUserId)) selectedAdminUserId = "";
   const controlsByUser = adminControls.reduce((counts, control) => {
     counts[control.user_id] = (counts[control.user_id] || 0) + 1;
     return counts;
   }, {});
-  const profilesByUser = new Map(adminProfiles.map((profile) => [profile.user_id, profile]));
+  const selectedProfile = adminProfiles.find((profile) => profile.user_id === selectedAdminUserId);
+  const selectedControls = selectedAdminUserId
+    ? adminControls.filter((control) => control.user_id === selectedAdminUserId)
+    : [];
   const accountRows = adminProfiles.map((profile) => `
     <form class="panel stack admin-profile-form" data-user-id="${escapeHTML(profile.user_id)}">
       <div class="page-head compact">
@@ -823,7 +830,10 @@ function renderAdmin() {
           <p class="section-label">${controlsByUser[profile.user_id] || 0} controls</p>
           <h3>${escapeHTML([profile.rank, profile.name].filter(Boolean).join(" ") || profile.email || "Unnamed account")}</h3>
         </div>
-        <button class="button secondary" type="submit">Save User</button>
+        <div class="toolbar">
+          <button class="button secondary" type="button" data-action="adminSelectUser" data-id="${escapeHTML(profile.user_id)}">${profile.user_id === selectedAdminUserId ? "Selected" : "View Controls"}</button>
+          <button class="button secondary" type="submit">Save User</button>
+        </div>
       </div>
       <div class="form-grid">
         <label>Visible username<input name="email" value="${escapeHTML(profile.email || "")}" autocomplete="off"></label>
@@ -841,38 +851,7 @@ function renderAdmin() {
         <label class="check-row form-check-row"><input name="formation_senior_requested" type="checkbox" ${profile.formation_senior_requested ? "checked" : ""}> Formation senior</label>
       </div>
     </form>`).join("");
-  const recentControls = adminControls.slice(0, 25).map((control) => {
-    const profile = profilesByUser.get(control.user_id) || {};
-    return `
-      <form class="panel stack admin-control-form" data-control-id="${escapeHTML(control.id)}">
-        <div class="page-head compact">
-          <div>
-            <p class="section-label">${escapeHTML([profile.rank, profile.name, profile.email].filter(Boolean).join(" ") || "Unknown user")}</p>
-            <h3>${escapeHTML(control.location || "Unknown location")}</h3>
-          </div>
-          <div class="toolbar">
-            <button class="button secondary" type="submit">Save Control</button>
-            <button class="button ghost" type="button" data-action="adminDeleteControl" data-id="${escapeHTML(control.id)}">Delete</button>
-          </div>
-        </div>
-        <div class="form-grid">
-          <label>Date<input name="date" type="date" value="${escapeHTML(String(control.date || "").slice(0, 10))}"></label>
-          <label>Location<input name="location" value="${escapeHTML(control.location || "")}" autocomplete="off"></label>
-          <label>Exercise / Operation name<input name="exercise_operation" value="${escapeHTML(control.exercise_operation || "")}" autocomplete="off"></label>
-          <label>Successful<select name="successful"><option value="true" ${control.successful ? "selected" : ""}>Successful</option><option value="false" ${!control.successful ? "selected" : ""}>Unsuccessful</option></select></label>
-          <label>Environment<select name="environment">${optionsHTML(OPTIONS.environments, control.environment)}</select></label>
-          <label>Type of control<select name="control_type">${optionsHTML(OPTIONS.controlTypes, control.control_type)}</select></label>
-          <label>Method of attack<select name="attack_method">${optionsHTML(OPTIONS.attackMethods, control.attack_method)}</select></label>
-          <label>Aircraft category<select name="aircraft_category">${optionsHTML(OPTIONS.aircraftCategories, control.aircraft_category)}</select></label>
-          <label>Aircraft type<select name="aircraft_type"><option value="">Select aircraft</option>${optionsHTML(OPTIONS.casAircraft, control.aircraft?.[0]?.type || "")}</select></label>
-          <label>Aircraft quantity<input name="aircraft_quantity" type="number" min="1" max="24" value="${escapeHTML(control.aircraft?.[0]?.quantity || 1)}"></label>
-          <label>Aircraft nationality<select name="aircraft_nationality">${nationalityOptionsHTML(control.aircraft?.[0]?.nationality || "GBR")}</select></label>
-          <label>Controller status<select name="controller_status">${optionsHTML(OPTIONS.controllerStatuses, control.controller_status)}</select></label>
-          <label class="check-row form-check-row"><input name="cmp" type="checkbox" ${control.cmp ? "checked" : ""}> CMP</label>
-        </div>
-        <label class="full-field">Notes<textarea name="notes" rows="2">${escapeHTML(control.notes || "")}</textarea></label>
-      </form>`;
-  }).join("");
+  const selectedControlRows = selectedControls.map(adminControlFormHTML).join("");
   $("#adminView").innerHTML = `
     ${renderHeader("Admin")}
     <div class="stack">
@@ -903,10 +882,42 @@ function renderAdmin() {
         ${accountRows || `<div class="empty">No account profiles have been created yet.</div>`}
       </section>
       <section class="stack">
-        <p class="section-label">Recent controls</p>
-        ${recentControls || `<div class="empty">No controls have been logged yet.</div>`}
+        <p class="section-label">${selectedProfile ? `Controls for ${escapeHTML([selectedProfile.rank, selectedProfile.name, selectedProfile.email].filter(Boolean).join(" ") || "selected user")}` : "User controls"}</p>
+        ${selectedAdminUserId ? (selectedControlRows || `<div class="empty">This user has no controls.</div>`) : `<div class="empty">Select a user to view their controls.</div>`}
       </section>
     </div>`;
+}
+
+function adminControlFormHTML(control) {
+  return `
+    <form class="panel stack admin-control-form" data-control-id="${escapeHTML(control.id)}">
+      <div class="page-head compact">
+        <div>
+          <p class="section-label">${escapeHTML(shortDate(control.date))}</p>
+          <h3>${escapeHTML(control.location || "Unknown location")}</h3>
+        </div>
+        <div class="toolbar">
+          <button class="button secondary" type="submit">Save Control</button>
+          <button class="button ghost" type="button" data-action="adminDeleteControl" data-id="${escapeHTML(control.id)}">Delete</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label>Date<input name="date" type="date" value="${escapeHTML(String(control.date || "").slice(0, 10))}"></label>
+        <label>Location<input name="location" value="${escapeHTML(control.location || "")}" autocomplete="off"></label>
+        <label>Exercise / Operation name<input name="exercise_operation" value="${escapeHTML(control.exercise_operation || "")}" autocomplete="off"></label>
+        <label>Successful<select name="successful"><option value="true" ${control.successful ? "selected" : ""}>Successful</option><option value="false" ${!control.successful ? "selected" : ""}>Unsuccessful</option></select></label>
+        <label>Environment<select name="environment">${optionsHTML(OPTIONS.environments, control.environment)}</select></label>
+        <label>Type of control<select name="control_type">${optionsHTML(OPTIONS.controlTypes, control.control_type)}</select></label>
+        <label>Method of attack<select name="attack_method">${optionsHTML(OPTIONS.attackMethods, control.attack_method)}</select></label>
+        <label>Aircraft category<select name="aircraft_category">${optionsHTML(OPTIONS.aircraftCategories, control.aircraft_category)}</select></label>
+        <label>Aircraft type<select name="aircraft_type"><option value="">Select aircraft</option>${optionsHTML(OPTIONS.casAircraft, control.aircraft?.[0]?.type || "")}</select></label>
+        <label>Aircraft quantity<input name="aircraft_quantity" type="number" min="1" max="24" value="${escapeHTML(control.aircraft?.[0]?.quantity || 1)}"></label>
+        <label>Aircraft nationality<select name="aircraft_nationality">${nationalityOptionsHTML(control.aircraft?.[0]?.nationality || "GBR")}</select></label>
+        <label>Controller status<select name="controller_status">${optionsHTML(OPTIONS.controllerStatuses, control.controller_status)}</select></label>
+        <label class="check-row form-check-row"><input name="cmp" type="checkbox" ${control.cmp ? "checked" : ""}> CMP</label>
+      </div>
+      <label class="full-field">Notes<textarea name="notes" rows="2">${escapeHTML(control.notes || "")}</textarea></label>
+    </form>`;
 }
 
 function formDataObject(form) {
@@ -1534,6 +1545,11 @@ document.addEventListener("click", async (event) => {
   if (target.dataset.action === "import") $("#fileImport").click();
   if (target.dataset.action === "export") exportData();
   if (target.dataset.action === "closeDialog") $("#entryDialog").close();
+  if (target.dataset.action === "adminSelectUser") {
+    selectedAdminUserId = target.dataset.id || "";
+    renderAdmin();
+    return;
+  }
   if (target.dataset.action === "adminDeleteControl" && confirm("Delete this control?")) {
     await deleteAdminControl(target.dataset.id).catch((error) => setStatus(error.message || "Unable to delete control."));
     return;
