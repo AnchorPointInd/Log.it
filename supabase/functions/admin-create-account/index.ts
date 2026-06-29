@@ -159,12 +159,14 @@ Deno.serve(async (req) => {
     }
   }
 
+  let emailSent = false;
+  let emailError = "";
   try {
     await sendApprovalEmail(contactEmail, username);
+    emailSent = true;
   } catch (error) {
-    await serviceClient.from("profiles").delete().eq("user_id", userId);
-    await serviceClient.auth.admin.deleteUser(userId);
-    return jsonResponse({ error: error instanceof Error ? error.message : "Unable to send approval email." }, 500);
+    emailError = error instanceof Error ? error.message : "Unable to send approval email.";
+    console.error(emailError);
   }
 
   if (requestId) {
@@ -181,5 +183,5 @@ Deno.serve(async (req) => {
     if (requestUpdateError) return jsonResponse({ error: requestUpdateError.message }, 500);
   }
 
-  return jsonResponse({ userId, username });
+  return jsonResponse({ userId, username, emailSent, emailError });
 });

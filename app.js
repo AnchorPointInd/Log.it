@@ -1181,7 +1181,7 @@ async function createAdminAccount(form) {
   if (!isValidContactEmail(values.contactEmail || "")) throw new Error("Enter a valid email address.");
   if (form.elements.formationSeniorRequested?.checked && !values.unit) throw new Error("Set a unit before granting formation senior access.");
   setStatus(requestId ? "Approving account request..." : "Creating account...");
-  const { error } = await supabaseClient.functions.invoke("admin-create-account", {
+  const { data, error } = await supabaseClient.functions.invoke("admin-create-account", {
     body: {
       ...values,
       username: normalizeAuthIdentifier(values.username || ""),
@@ -1190,11 +1190,33 @@ async function createAdminAccount(form) {
       formationSeniorRequested: Boolean(form.elements.formationSeniorRequested?.checked)
     }
   });
-  if (error) throw error;
+  if (error) throw await readableFunctionError(error);
   form.reset();
   await loadAdminData();
-  setStatus(requestId ? "Account request approved." : "Account created.");
+  const successMessage = requestId ? "Account request approved." : "Account created.";
+  setStatus(data?.emailSent === false && data?.emailError
+    ? `${successMessage} Email was not sent: ${data.emailError}`
+    : successMessage);
   renderAdmin();
+}
+
+async function readableFunctionError(error) {
+  const response = error?.context;
+  if (response && typeof response.clone === "function") {
+    try {
+      const body = await response.clone().json();
+      if (body?.error) return new Error(body.error);
+      if (body?.message) return new Error(body.message);
+    } catch {
+      try {
+        const text = await response.clone().text();
+        if (text) return new Error(text);
+      } catch {
+        // Fall through to the original error message.
+      }
+    }
+  }
+  return new Error(error?.message || "Edge Function failed.");
 }
 
 async function rejectAccountRequest(id) {
