@@ -45,7 +45,7 @@ const OPTIONS = {
     "VEN", "VNM", "VGB", "VIR", "WLF", "ESH", "YEM", "ZMB", "ZWE"
   ],
   marks: ["Laser", "IR", "Keyhole", "Talk-On", "No Mark", "DRP", "Link 16 Handover", "Radar Offset", "VDL/FMV"],
-  constraints: ["Hot", "Non-Permissive", "SEAD", "Urban", "JTAC/FAC(A)", "Remote Observer", "Supervised", "Day", "Low Level TTPs", "Night FW CAS", "Night TTPs", "Danger Area", "Suppression", "Aviator"]
+  constraints: ["Hot", "Non-Permissive", "SEAD", "Urban", "JTAC/FAC(A)", "Remote Observer", "Supervised", "Day", "Low Level TTPs", "Night FW CAS", "Night TTPs", "Suppression", "Aviator"]
 };
 
 const DEFAULT_REQUIREMENTS = [
@@ -115,9 +115,8 @@ const HTML_LOGBOOK_CONSTRAINT_COLUMNS = [
   [32, "Low Level TTPs"],
   [33, "Night FW CAS"],
   [34, "Night TTPs"],
-  [35, "Danger Area"],
-  [36, "Supervised"],
-  [37, "Aviator"]
+  [35, "Supervised"],
+  [36, "Aviator"]
 ];
 
 const AIRCRAFT_IMPORT_ALIASES = {
