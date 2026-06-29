@@ -142,7 +142,9 @@ let currentUser = null;
 let isAdmin = false;
 let adminProfiles = [];
 let adminControls = [];
+let adminAccountRequests = [];
 let selectedAdminUserId = "";
+let authMode = "signin";
 let syncStatus = "Sign in to sync controls.";
 let optionsLoaded = false;
 let filterState = {
@@ -454,6 +456,7 @@ async function loadRemoteState() {
   else {
     adminProfiles = [];
     adminControls = [];
+    adminAccountRequests = [];
     selectedAdminUserId = "";
   }
   saveState();
@@ -488,14 +491,21 @@ async function loadRemoteOptions() {
 }
 
 async function loadAdminData() {
-  const [{ data: profiles, error: profilesError }, { data: controls, error: controlsError }] = await Promise.all([
+  const [
+    { data: profiles, error: profilesError },
+    { data: controls, error: controlsError },
+    { data: requests, error: requestsError }
+  ] = await Promise.all([
     supabaseClient.from("profiles").select("*").order("formation_senior_requested", { ascending: false }).order("updated_at", { ascending: false }),
-    supabaseClient.from("controls").select("*").order("date", { ascending: false })
+    supabaseClient.from("controls").select("*").order("date", { ascending: false }),
+    supabaseClient.from("account_requests").select("*").order("created_at", { ascending: false })
   ]);
   if (profilesError) throw profilesError;
   if (controlsError) throw controlsError;
+  if (requestsError) throw requestsError;
   adminProfiles = profiles || [];
   adminControls = controls || [];
+  adminAccountRequests = requests || [];
 }
 
 async function saveRemoteProfile() {
@@ -542,6 +552,7 @@ async function bootstrapAuth() {
       optionsLoaded = false;
       adminProfiles = [];
       adminControls = [];
+      adminAccountRequests = [];
       selectedAdminUserId = "";
       activeView = "dashboard";
       state = loadState();
@@ -573,23 +584,36 @@ function render() {
 }
 
 function renderSignedOut() {
+  const isRequestMode = authMode === "request";
   $$(".view").forEach((view) => view.classList.remove("active"));
   $("#dashboardView").classList.add("active");
   $("#dashboardView").innerHTML = `
     <div class="auth-screen">
-      <section class="auth-card">
+      <section class="auth-card ${isRequestMode ? "request-card" : ""}">
         <div>
           <p class="eyebrow">JTAC Logbook</p>
           <h1>Account Access</h1>
         </div>
-        <form id="authForm" class="stack">
+        <div class="auth-mode-tabs">
+          <button class="button ${!isRequestMode ? "active" : ""}" type="button" data-action="authMode" data-mode="signin">Sign In</button>
+          <button class="button ${isRequestMode ? "active" : ""}" type="button" data-action="authMode" data-mode="request">Request Account</button>
+        </div>
+        <form id="${isRequestMode ? "accountRequestForm" : "authForm"}" class="stack">
           <div class="form-grid">
-            <label>Username<input id="authEmail" type="text" autocomplete="username" required></label>
-            <label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required></label>
+            <label>Username<input id="authEmail" name="username" type="text" autocomplete="username" required></label>
+            ${isRequestMode ? `
+              <label>Name<input name="name" autocomplete="name" required></label>
+              <label>Rank<input name="rank" autocomplete="off"></label>
+              <label>Service number<input name="serviceNumber" autocomplete="off"></label>
+              <label>Unit<input name="unit" autocomplete="organization"></label>
+              <label>Capbadge<input name="capbadge" autocomplete="off"></label>
+              <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses)}</select></label>
+              <label class="check-row form-check-row"><input name="formationSeniorRequested" type="checkbox"> Formation senior</label>
+            ` : `<label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required></label>`}
           </div>
-          <button class="button primary" type="submit">Sign In</button>
+          <button class="button primary" type="submit">${isRequestMode ? "Request Account" : "Sign In"}</button>
         </form>
-        <p class="entry-meta">Accounts are created by an admin.</p>
+        <p class="entry-meta">${isRequestMode ? "An admin will review the request and issue account details after approval." : "Need access? Request an account for admin approval."}</p>
         <p class="entry-meta" id="authStatus">${escapeHTML(syncStatus)}</p>
       </section>
     </div>`;
@@ -852,13 +876,19 @@ function renderAdmin() {
       </div>
     </form>`).join("");
   const selectedControlRows = selectedControls.map(adminControlFormHTML).join("");
+  const pendingRequests = adminAccountRequests.filter((request) => request.status === "pending");
+  const requestRows = pendingRequests.map(adminRequestFormHTML).join("");
   $("#adminView").innerHTML = `
     ${renderHeader("Admin")}
     <div class="stack">
       <section class="grid three">
         ${metric("Accounts", adminProfiles.length)}
+        ${metric("Account requests", pendingRequests.length)}
         ${metric("Senior requests", adminProfiles.filter((profile) => profile.formation_senior_requested).length)}
-        ${metric("Controls", adminControls.length)}
+      </section>
+      <section class="stack">
+        <p class="section-label">Account requests</p>
+        ${requestRows || `<div class="empty">No pending account requests.</div>`}
       </section>
       <section class="panel stack">
         <p class="section-label">Create account</p>
@@ -886,6 +916,33 @@ function renderAdmin() {
         ${selectedAdminUserId ? (selectedControlRows || `<div class="empty">This user has no controls.</div>`) : `<div class="empty">Select a user to view their controls.</div>`}
       </section>
     </div>`;
+}
+
+function adminRequestFormHTML(request) {
+  return `
+    <form class="panel stack admin-request-form" data-request-id="${escapeHTML(request.id)}">
+      <div class="page-head compact">
+        <div>
+          <p class="section-label">Requested ${escapeHTML(shortDate(request.created_at))}</p>
+          <h3>${escapeHTML([request.rank, request.name].filter(Boolean).join(" ") || request.username || "Account request")}</h3>
+        </div>
+        <div class="toolbar">
+          <button class="button primary" type="submit">Approve</button>
+          <button class="button ghost" type="button" data-action="adminRejectRequest" data-id="${escapeHTML(request.id)}">Reject</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label>Username<input name="username" value="${escapeHTML(request.username || "")}" required autocomplete="off"></label>
+        <label>Initial password<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+        <label>Name<input name="name" value="${escapeHTML(request.name || "")}" autocomplete="off"></label>
+        <label>Rank<input name="rank" value="${escapeHTML(request.rank || "")}" autocomplete="off"></label>
+        <label>Service number<input name="serviceNumber" value="${escapeHTML(request.service_number || "")}" autocomplete="off"></label>
+        <label>Unit<input name="unit" value="${escapeHTML(request.unit || "")}" autocomplete="off"></label>
+        <label>Capbadge<input name="capbadge" value="${escapeHTML(request.capbadge || "")}" autocomplete="off"></label>
+        <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses, request.qualification || "")}</select></label>
+        <label class="check-row form-check-row"><input name="formationSeniorRequested" type="checkbox" ${request.formation_senior_requested ? "checked" : ""}> Formation senior</label>
+      </div>
+    </form>`;
 }
 
 function adminControlFormHTML(control) {
@@ -931,19 +988,68 @@ function nullableDate(value) {
 async function createAdminAccount(form) {
   if (!isAdmin) return;
   const values = formDataObject(form);
-  setStatus("Creating account...");
+  const requestId = form.dataset.requestId || null;
+  setStatus(requestId ? "Approving account request..." : "Creating account...");
   const { error } = await supabaseClient.functions.invoke("admin-create-account", {
     body: {
       ...values,
       username: normalizeAuthIdentifier(values.username || ""),
+      requestId,
       formationSeniorRequested: Boolean(form.elements.formationSeniorRequested?.checked)
     }
   });
   if (error) throw error;
   form.reset();
   await loadAdminData();
-  setStatus("Account created.");
+  setStatus(requestId ? "Account request approved." : "Account created.");
   renderAdmin();
+}
+
+async function rejectAccountRequest(id) {
+  if (!isAdmin) return;
+  setStatus("Rejecting account request...");
+  const { error } = await supabaseClient
+    .from("account_requests")
+    .update({
+      status: "rejected",
+      reviewed_by: currentUser.id,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id)
+    .eq("status", "pending");
+  if (error) throw error;
+  await loadAdminData();
+  setStatus("Account request rejected.");
+  renderAdmin();
+}
+
+async function requestAccount(form) {
+  const values = formDataObject(form);
+  const username = normalizeAuthIdentifier(values.username || "");
+  if (!isValidAuthIdentifier(username) || username.includes("@")) {
+    setStatus("Use letters, numbers, dots, hyphens or underscores for username.");
+    return;
+  }
+  setStatus("Submitting account request...");
+  const { error } = await supabaseClient.from("account_requests").insert({
+    username,
+    name: values.name || "",
+    rank: values.rank || "",
+    service_number: values.serviceNumber || "",
+    unit: values.unit || "",
+    capbadge: values.capbadge || "",
+    qualification: values.qualification || "",
+    formation_senior_requested: Boolean(form.elements.formationSeniorRequested?.checked)
+  });
+  if (error) {
+    if (error.code === "23505") throw new Error("There is already a pending request for that username.");
+    throw error;
+  }
+  form.reset();
+  authMode = "signin";
+  setStatus("Account request submitted. An admin will review it.");
+  renderSignedOut();
 }
 
 async function saveAdminProfile(form) {
@@ -1538,6 +1644,11 @@ document.addEventListener("click", async (event) => {
   if (!target) return;
   if (target.closest("#authForm")) return;
   if (target.type === "submit" && target.closest("form")) return;
+  if (target.dataset.action === "authMode") {
+    authMode = target.dataset.mode === "request" ? "request" : "signin";
+    renderSignedOut();
+    return;
+  }
   if (target.dataset.view) activeView = target.dataset.view;
   if (target.dataset.nav) activeView = target.dataset.nav;
   if (target.dataset.action === "add" || target.id === "quickAdd") openEntryDialog();
@@ -1552,6 +1663,10 @@ document.addEventListener("click", async (event) => {
   }
   if (target.dataset.action === "adminDeleteControl" && confirm("Delete this control?")) {
     await deleteAdminControl(target.dataset.id).catch((error) => setStatus(error.message || "Unable to delete control."));
+    return;
+  }
+  if (target.dataset.action === "adminRejectRequest" && confirm("Reject this account request?")) {
+    await rejectAccountRequest(target.dataset.id).catch((error) => setStatus(error.message || "Unable to reject request."));
     return;
   }
   if (target.dataset.action === "signOut") {
@@ -1586,6 +1701,16 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  if (event.target.id === "accountRequestForm") {
+    event.preventDefault();
+    await requestAccount(event.target).catch((error) => setStatus(error.message || "Unable to submit account request."));
+    return;
+  }
+  if (event.target.classList.contains("admin-request-form")) {
+    event.preventDefault();
+    await createAdminAccount(event.target).catch((error) => setStatus(error.message || "Unable to approve request."));
+    return;
+  }
   if (event.target.id === "adminCreateAccountForm") {
     event.preventDefault();
     await createAdminAccount(event.target).catch((error) => setStatus(error.message || "Unable to create account."));
