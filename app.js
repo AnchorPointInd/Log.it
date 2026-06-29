@@ -11,6 +11,20 @@ const OPTIONS = {
   attackMethods: ["BOT", "BOC"],
   aircraftCategories: [],
   casAircraft: [],
+  units: [
+    "AIR FAC Programme",
+    "AIR No1 Gp RAF",
+    "AIR No2 Gp RAF",
+    "MARITIME UKCF",
+    "LAND 16(AA) Bde",
+    "LAND 1 RHA",
+    "LAND 19 RA",
+    "LAND 4 RA",
+    "LAND 5 RA",
+    "LAND 1 DRS",
+    "LAND 3 DRS",
+    "LAND 100 RA"
+  ],
   controllerStatuses: ["JTAC-IQ", "JTAC-Q", "FAC(A)", "Instructor"],
   aircraftNationalities: [
     "AFG", "ALA", "ALB", "DZA", "ASM", "AND", "AGO", "AIA", "ATA", "ATG", "ARG", "ARM", "ABW", "AUS", "AUT", "AZE",
@@ -605,7 +619,7 @@ function renderSignedOut() {
               <label>Name<input name="name" autocomplete="name" required></label>
               <label>Rank<input name="rank" autocomplete="off"></label>
               <label>Service number<input name="serviceNumber" autocomplete="off"></label>
-              <label>Unit<input name="unit" autocomplete="organization"></label>
+              <label>Unit<select name="unit"><option value="">Select unit</option>${unitOptionsHTML()}</select></label>
               <label>Capbadge<input name="capbadge" autocomplete="off"></label>
               <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses)}</select></label>
               <label class="check-row form-check-row"><input name="formationSeniorRequested" type="checkbox"> Formation senior</label>
@@ -804,7 +818,7 @@ function renderSettings() {
           ${profileInput("name", "Name", profile.name)}
           ${profileInput("rank", "Rank", profile.rank)}
           ${profileInput("serviceNumber", "Service Number", profile.serviceNumber)}
-          ${profileInput("unit", "Unit", profile.unit)}
+          <label>Unit<select name="unit"><option value="">Not Set</option>${unitOptionsHTML(profile.unit)}</select></label>
           ${profileInput("capbadge", "Capbadge", profile.capbadge)}
           <label>JTAC Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses, profile.qualification)}</select></label>
         </div>
@@ -864,7 +878,7 @@ function renderAdmin() {
         <label>Name<input name="name" value="${escapeHTML(profile.name || "")}" autocomplete="off"></label>
         <label>Rank<input name="rank" value="${escapeHTML(profile.rank || "")}" autocomplete="off"></label>
         <label>Service number<input name="service_number" value="${escapeHTML(profile.service_number || "")}" autocomplete="off"></label>
-        <label>Unit<input name="unit" value="${escapeHTML(profile.unit || "")}" autocomplete="off"></label>
+        <label>Unit<select name="unit"><option value="">Not Set</option>${unitOptionsHTML(profile.unit || "")}</select></label>
         <label>Capbadge<input name="capbadge" value="${escapeHTML(profile.capbadge || "")}" autocomplete="off"></label>
         <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses, profile.qualification || "")}</select></label>
         <label>Initial qualification date<input name="initial_qualification_date" type="date" value="${escapeHTML(profile.initial_qualification_date || "")}"></label>
@@ -899,7 +913,7 @@ function renderAdmin() {
             <label>Name<input name="name" autocomplete="off"></label>
             <label>Rank<input name="rank" autocomplete="off"></label>
             <label>Service number<input name="serviceNumber" autocomplete="off"></label>
-            <label>Unit<input name="unit" autocomplete="off"></label>
+            <label>Unit<select name="unit"><option value="">Not Set</option>${unitOptionsHTML()}</select></label>
             <label>Capbadge<input name="capbadge" autocomplete="off"></label>
             <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses)}</select></label>
             <label class="check-row form-check-row"><input name="formationSeniorRequested" type="checkbox"> Formation senior</label>
@@ -937,7 +951,7 @@ function adminRequestFormHTML(request) {
         <label>Name<input name="name" value="${escapeHTML(request.name || "")}" autocomplete="off"></label>
         <label>Rank<input name="rank" value="${escapeHTML(request.rank || "")}" autocomplete="off"></label>
         <label>Service number<input name="serviceNumber" value="${escapeHTML(request.service_number || "")}" autocomplete="off"></label>
-        <label>Unit<input name="unit" value="${escapeHTML(request.unit || "")}" autocomplete="off"></label>
+        <label>Unit<select name="unit"><option value="">Not Set</option>${unitOptionsHTML(request.unit || "")}</select></label>
         <label>Capbadge<input name="capbadge" value="${escapeHTML(request.capbadge || "")}" autocomplete="off"></label>
         <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses, request.qualification || "")}</select></label>
         <label class="check-row form-check-row"><input name="formationSeniorRequested" type="checkbox" ${request.formation_senior_requested ? "checked" : ""}> Formation senior</label>
@@ -1134,6 +1148,14 @@ function profileInput(name, label, value = "", type = "text") {
 
 function optionsHTML(options, selected = "") {
   return options.map((option) => `<option value="${escapeHTML(option)}" ${option === selected ? "selected" : ""}>${escapeHTML(option)}</option>`).join("");
+}
+
+function unitOptionsHTML(selected = "") {
+  const selectedValue = selected || "";
+  const options = OPTIONS.units.includes(selectedValue) || !selectedValue
+    ? OPTIONS.units
+    : [...OPTIONS.units, selectedValue];
+  return optionsHTML(options, selectedValue);
 }
 
 function nationalityOptionsHTML(selected = "GBR") {
