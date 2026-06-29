@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0b0d0f">
-    <meta name="app-version" content="approval-email-1">
+    <meta name="app-version" content="formation-senior-1">
     <title>JTAC Logbook</title>
-    <link rel="stylesheet" href="styles.css?v=approval-email-1">
+    <link rel="stylesheet" href="styles.css?v=formation-senior-1">
   </head>
   <body>
     <div class="app-shell">
@@ -24,6 +24,7 @@
           <button class="nav-item" data-view="currency">Currency</button>
           <button class="nav-item" data-view="reports">Reports</button>
           <button class="nav-item" data-view="settings">Settings</button>
+          <button class="nav-item formation-senior-only" data-view="formation">Formation Senior</button>
           <button class="nav-item admin-only" data-view="admin">Admin</button>
         </nav>
         <section class="auth-panel" id="authPanel"></section>
@@ -36,6 +37,7 @@
         <section class="view" id="currencyView"></section>
         <section class="view" id="reportsView"></section>
         <section class="view" id="settingsView"></section>
+        <section class="view" id="formationView"></section>
         <section class="view" id="adminView"></section>
       </main>
     </div>
@@ -90,6 +92,6 @@
 
     <input id="fileImport" type="file" accept=".json,.html,.htm" hidden>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=approval-email-1"></script>
+    <script src="app.js?v=formation-senior-1"></script>
   </body>
 </html>

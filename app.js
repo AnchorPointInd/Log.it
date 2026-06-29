@@ -154,10 +154,16 @@ let selectedMarks = new Set();
 let selectedConstraints = new Set();
 let currentUser = null;
 let isAdmin = false;
+let isFormationSenior = false;
 let adminProfiles = [];
 let adminControls = [];
 let adminAccountRequests = [];
+let adminFormationSeniors = [];
 let selectedAdminUserId = "";
+let formationProfiles = [];
+let formationControls = [];
+let selectedFormationUserId = "";
+let formationSeniorUnit = "";
 let authMode = "signin";
 let syncStatus = "Sign in to sync controls.";
 let optionsLoaded = false;
@@ -460,16 +466,26 @@ function profileFromUserMetadata(user) {
 async function loadRemoteState() {
   if (!currentUser) return;
   setStatus("Loading account data...");
-  const [, { data: profile, error: profileError }, { data: controls, error: controlsError }, { data: adminRow, error: adminError }] = await Promise.all([
+  const [
+    ,
+    { data: profile, error: profileError },
+    { data: controls, error: controlsError },
+    { data: adminRow, error: adminError },
+    { data: formationSeniorRow, error: formationSeniorError }
+  ] = await Promise.all([
     loadRemoteOptions(),
     supabaseClient.from("profiles").select("*").eq("user_id", currentUser.id).maybeSingle(),
     supabaseClient.from("controls").select("*").eq("user_id", currentUser.id).order("date", { ascending: false }),
-    supabaseClient.from("app_admins").select("user_id").eq("user_id", currentUser.id).maybeSingle()
+    supabaseClient.from("app_admins").select("user_id").eq("user_id", currentUser.id).maybeSingle(),
+    supabaseClient.from("app_formation_seniors").select("user_id,unit").eq("user_id", currentUser.id).maybeSingle()
   ]);
   if (profileError) throw profileError;
   if (controlsError) throw controlsError;
   if (adminError) throw adminError;
+  if (formationSeniorError) throw formationSeniorError;
   isAdmin = Boolean(adminRow);
+  isFormationSenior = Boolean(formationSeniorRow);
+  formationSeniorUnit = formationSeniorRow?.unit || "";
   state.profile = dbProfileToState(profile);
   if (!profile) {
     state.profile = profileFromUserMetadata(currentUser);
@@ -481,7 +497,14 @@ async function loadRemoteState() {
     adminProfiles = [];
     adminControls = [];
     adminAccountRequests = [];
+    adminFormationSeniors = [];
     selectedAdminUserId = "";
+  }
+  if (isFormationSenior) await loadFormationSeniorData();
+  else {
+    formationProfiles = [];
+    formationControls = [];
+    selectedFormationUserId = "";
   }
   saveState();
   setStatus(`Signed in as ${displayIdentifierFromUser(currentUser)}.`);
@@ -518,18 +541,52 @@ async function loadAdminData() {
   const [
     { data: profiles, error: profilesError },
     { data: controls, error: controlsError },
-    { data: requests, error: requestsError }
+    { data: requests, error: requestsError },
+    { data: formationSeniors, error: formationSeniorsError }
   ] = await Promise.all([
     supabaseClient.from("profiles").select("*").order("formation_senior_requested", { ascending: false }).order("updated_at", { ascending: false }),
     supabaseClient.from("controls").select("*").order("date", { ascending: false }),
-    supabaseClient.from("account_requests").select("*").order("created_at", { ascending: false })
+    supabaseClient.from("account_requests").select("*").order("created_at", { ascending: false }),
+    supabaseClient.from("app_formation_seniors").select("*")
   ]);
   if (profilesError) throw profilesError;
   if (controlsError) throw controlsError;
   if (requestsError) throw requestsError;
+  if (formationSeniorsError) throw formationSeniorsError;
   adminProfiles = profiles || [];
   adminControls = controls || [];
   adminAccountRequests = requests || [];
+  adminFormationSeniors = formationSeniors || [];
+}
+
+async function loadFormationSeniorData() {
+  if (!formationSeniorUnit) {
+    formationProfiles = [];
+    formationControls = [];
+    selectedFormationUserId = "";
+    return;
+  }
+  const { data: profiles, error: profilesError } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("unit", formationSeniorUnit)
+    .order("rank", { ascending: true })
+    .order("name", { ascending: true });
+  if (profilesError) throw profilesError;
+  formationProfiles = profiles || [];
+  const userIds = formationProfiles.map((profile) => profile.user_id).filter(Boolean);
+  if (!userIds.length) {
+    formationControls = [];
+    selectedFormationUserId = "";
+    return;
+  }
+  const { data: controls, error: controlsError } = await supabaseClient
+    .from("controls")
+    .select("*")
+    .in("user_id", userIds)
+    .order("date", { ascending: false });
+  if (controlsError) throw controlsError;
+  formationControls = controls || [];
 }
 
 async function saveRemoteProfile() {
@@ -573,11 +630,17 @@ async function bootstrapAuth() {
     if (currentUser) loadRemoteState().catch((error) => setStatus(error.message));
     else {
       isAdmin = false;
+      isFormationSenior = false;
       optionsLoaded = false;
       adminProfiles = [];
       adminControls = [];
       adminAccountRequests = [];
+      adminFormationSeniors = [];
       selectedAdminUserId = "";
+      formationProfiles = [];
+      formationControls = [];
+      selectedFormationUserId = "";
+      formationSeniorUnit = "";
       activeView = "dashboard";
       state = loadState();
       setStatus("Signed out.");
@@ -589,6 +652,7 @@ async function bootstrapAuth() {
 function render() {
   document.body.classList.toggle("signed-out", !currentUser);
   document.body.classList.toggle("is-admin", Boolean(isAdmin));
+  document.body.classList.toggle("is-formation-senior", Boolean(isFormationSenior));
   if (!currentUser) {
     renderSignedOut();
     renderAuthPanel();
@@ -600,6 +664,7 @@ function render() {
     return;
   }
   if (activeView === "admin" && !isAdmin) activeView = "dashboard";
+  if (activeView === "formation" && !isFormationSenior) activeView = "dashboard";
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === activeView));
   $$(".view").forEach((view) => view.classList.remove("active"));
   $(`#${activeView}View`).classList.add("active");
@@ -608,6 +673,7 @@ function render() {
   renderCurrency();
   renderReports();
   renderSettings();
+  renderFormationSenior();
   renderAdmin();
   renderAuthPanel();
 }
@@ -902,6 +968,7 @@ function renderAdmin() {
   const selectedControls = selectedAdminUserId
     ? adminControls.filter((control) => control.user_id === selectedAdminUserId)
     : [];
+  const formationSeniorUserIds = new Set(adminFormationSeniors.map((row) => row.user_id));
   const accountRows = adminProfiles.map((profile) => `
     <form class="panel stack admin-profile-form" data-user-id="${escapeHTML(profile.user_id)}">
       <div class="page-head compact">
@@ -928,7 +995,8 @@ function renderAdmin() {
         <label>PMS proficiency date<input name="pms_proficiency_date" type="date" value="${escapeHTML(profile.pms_proficiency_date || "")}"></label>
         <label>Annual evaluation date<input name="annual_evaluation_date" type="date" value="${escapeHTML(profile.annual_evaluation_date || "")}"></label>
         <label>Evaluation waiver number<input name="evaluation_waiver_number" value="${escapeHTML(profile.evaluation_waiver_number || "")}" autocomplete="off"></label>
-        <label class="check-row form-check-row"><input name="formation_senior_requested" type="checkbox" ${profile.formation_senior_requested ? "checked" : ""}> Formation senior</label>
+        <label class="check-row form-check-row"><input name="formation_senior_requested" type="checkbox" ${formationSeniorUserIds.has(profile.user_id) ? "checked" : ""}> Formation senior</label>
+        ${profile.formation_senior_requested && !formationSeniorUserIds.has(profile.user_id) ? `<p class="entry-meta">Formation senior access requested.</p>` : ""}
       </div>
     </form>`).join("");
   const selectedControlRows = selectedControls.map(adminControlFormHTML).join("");
@@ -940,7 +1008,7 @@ function renderAdmin() {
       <section class="grid three">
         ${metric("Accounts", adminProfiles.length)}
         ${metric("Account requests", pendingRequests.length)}
-        ${metric("Senior requests", adminProfiles.filter((profile) => profile.formation_senior_requested).length)}
+        ${metric("Formation seniors", adminFormationSeniors.length)}
       </section>
       <section class="stack">
         <p class="section-label">Account requests</p>
@@ -974,6 +1042,70 @@ function renderAdmin() {
     </div>`;
 }
 
+function renderFormationSenior() {
+  const view = $("#formationView");
+  if (!view) return;
+  if (!isFormationSenior) {
+    view.innerHTML = "";
+    return;
+  }
+  if (selectedFormationUserId && !formationProfiles.some((profile) => profile.user_id === selectedFormationUserId)) selectedFormationUserId = "";
+  const controlsByUser = formationControls.reduce((counts, control) => {
+    counts[control.user_id] = (counts[control.user_id] || 0) + 1;
+    return counts;
+  }, {});
+  const selectedProfile = formationProfiles.find((profile) => profile.user_id === selectedFormationUserId);
+  const selectedControls = selectedFormationUserId
+    ? formationControls.filter((control) => control.user_id === selectedFormationUserId)
+    : [];
+  const accountRows = formationProfiles.map((profile) => `
+    <form class="panel stack formation-profile-form" data-user-id="${escapeHTML(profile.user_id)}">
+      <div class="page-head compact">
+        <div>
+          <p class="section-label">${controlsByUser[profile.user_id] || 0} controls</p>
+          <h3>${escapeHTML([profile.rank, profile.name].filter(Boolean).join(" ") || profile.email || "Unnamed account")}</h3>
+        </div>
+        <div class="toolbar">
+          <button class="button secondary" type="button" data-action="formationSelectUser" data-id="${escapeHTML(profile.user_id)}">${profile.user_id === selectedFormationUserId ? "Selected" : "View Controls"}</button>
+          <button class="button secondary" type="submit">Save User</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label>Visible username<input name="email" value="${escapeHTML(profile.email || "")}" autocomplete="off" readonly></label>
+        <label>Email address<input name="contact_email" type="email" value="${escapeHTML(profile.contact_email || "")}" autocomplete="off"></label>
+        <label>Name<input name="name" value="${escapeHTML(profile.name || "")}" autocomplete="off"></label>
+        <label>Rank<input name="rank" value="${escapeHTML(profile.rank || "")}" autocomplete="off"></label>
+        <label>Service number<input name="service_number" value="${escapeHTML(profile.service_number || "")}" autocomplete="off"></label>
+        <label>Unit<input name="unit" value="${escapeHTML(profile.unit || "")}" readonly></label>
+        <label>Capbadge<input name="capbadge" value="${escapeHTML(profile.capbadge || "")}" autocomplete="off"></label>
+        <label>Qualification<select name="qualification"><option value="">Not Set</option>${optionsHTML(OPTIONS.controllerStatuses, profile.qualification || "")}</select></label>
+        <label>Initial qualification date<input name="initial_qualification_date" type="date" value="${escapeHTML(profile.initial_qualification_date || "")}"></label>
+        <label>PMS training date<input name="pms_training_date" type="date" value="${escapeHTML(profile.pms_training_date || "")}"></label>
+        <label>PMS proficiency date<input name="pms_proficiency_date" type="date" value="${escapeHTML(profile.pms_proficiency_date || "")}"></label>
+        <label>Annual evaluation date<input name="annual_evaluation_date" type="date" value="${escapeHTML(profile.annual_evaluation_date || "")}"></label>
+        <label>Evaluation waiver number<input name="evaluation_waiver_number" value="${escapeHTML(profile.evaluation_waiver_number || "")}" autocomplete="off"></label>
+      </div>
+    </form>`).join("");
+  const selectedControlRows = selectedControls.map((control) => adminControlFormHTML(control, "formation")).join("");
+  view.innerHTML = `
+    ${renderHeader("Formation Senior")}
+    <div class="stack">
+      <section class="grid three">
+        ${metric("Unit", formationSeniorUnit || "Not set")}
+        ${metric("People", formationProfiles.length)}
+        ${metric("Controls", formationControls.length)}
+      </section>
+      <section class="stack">
+        <p class="section-label">People in unit</p>
+        ${accountRows || `<div class="empty">No people found in ${escapeHTML(formationSeniorUnit || "this unit")}.</div>`}
+      </section>
+      <section class="stack">
+        <p class="section-label">${selectedProfile ? `Controls for ${escapeHTML([selectedProfile.rank, selectedProfile.name, selectedProfile.email].filter(Boolean).join(" ") || "selected user")}` : "User controls"}</p>
+        ${selectedFormationUserId ? (selectedControlRows || `<div class="empty">This user has no controls.</div>`) : `<div class="empty">Select a user to view their controls.</div>`}
+      </section>
+    </div>`;
+}
+
 function adminRequestFormHTML(request) {
   return `
     <form class="panel stack admin-request-form" data-request-id="${escapeHTML(request.id)}">
@@ -1001,9 +1133,11 @@ function adminRequestFormHTML(request) {
     </form>`;
 }
 
-function adminControlFormHTML(control) {
+function adminControlFormHTML(control, scope = "admin") {
+  const formClass = scope === "formation" ? "formation-control-form" : "admin-control-form";
+  const deleteAction = scope === "formation" ? "formationDeleteControl" : "adminDeleteControl";
   return `
-    <form class="panel stack admin-control-form" data-control-id="${escapeHTML(control.id)}">
+    <form class="panel stack ${formClass}" data-control-id="${escapeHTML(control.id)}">
       <div class="page-head compact">
         <div>
           <p class="section-label">${escapeHTML(shortDate(control.date))}</p>
@@ -1011,7 +1145,7 @@ function adminControlFormHTML(control) {
         </div>
         <div class="toolbar">
           <button class="button secondary" type="submit">Save Control</button>
-          <button class="button ghost" type="button" data-action="adminDeleteControl" data-id="${escapeHTML(control.id)}">Delete</button>
+          <button class="button ghost" type="button" data-action="${deleteAction}" data-id="${escapeHTML(control.id)}">Delete</button>
         </div>
       </div>
       <div class="form-grid">
@@ -1046,6 +1180,7 @@ async function createAdminAccount(form) {
   const values = formDataObject(form);
   const requestId = form.dataset.requestId || null;
   if (!isValidContactEmail(values.contactEmail || "")) throw new Error("Enter a valid email address.");
+  if (form.elements.formationSeniorRequested?.checked && !values.unit) throw new Error("Set a unit before granting formation senior access.");
   setStatus(requestId ? "Approving account request..." : "Creating account...");
   const { error } = await supabaseClient.functions.invoke("admin-create-account", {
     body: {
@@ -1122,6 +1257,7 @@ async function saveAdminProfile(form) {
   const userId = form.dataset.userId;
   const isFormationSenior = Boolean(form.elements.formation_senior_requested?.checked);
   const existing = adminProfiles.find((profile) => profile.user_id === userId);
+  if (isFormationSenior && !values.unit) throw new Error("Set a unit before granting formation senior access.");
   const payload = {
     user_id: userId,
     email: normalizeAuthIdentifier(values.email || ""),
@@ -1144,18 +1280,23 @@ async function saveAdminProfile(form) {
   setStatus("Saving user...");
   const { error } = await supabaseClient.from("profiles").upsert(payload, { onConflict: "user_id" });
   if (error) throw error;
+  if (isFormationSenior) {
+    const { error: roleError } = await supabaseClient
+      .from("app_formation_seniors")
+      .upsert({ user_id: userId, unit: payload.unit }, { onConflict: "user_id" });
+    if (roleError) throw roleError;
+  } else {
+    const { error: roleError } = await supabaseClient.from("app_formation_seniors").delete().eq("user_id", userId);
+    if (roleError) throw roleError;
+  }
   await loadAdminData();
   setStatus("User saved.");
   renderAdmin();
 }
 
-async function saveAdminControl(form) {
-  if (!isAdmin) return;
+function controlPayloadFromForm(form, existing) {
   const values = formDataObject(form);
-  const controlId = form.dataset.controlId;
-  const existing = adminControls.find((control) => control.id === controlId);
-  if (!existing) throw new Error("Control not found.");
-  const payload = {
+  return {
     date: parseDate(values.date).toISOString(),
     location: values.location || "",
     exercise_operation: values.exercise_operation || "",
@@ -1174,12 +1315,83 @@ async function saveAdminControl(form) {
     controller_status: values.controller_status || "JTAC-Q",
     updated_at: new Date().toISOString()
   };
+}
+
+async function saveAdminControl(form) {
+  if (!isAdmin) return;
+  const controlId = form.dataset.controlId;
+  const existing = adminControls.find((control) => control.id === controlId);
+  if (!existing) throw new Error("Control not found.");
+  const payload = controlPayloadFromForm(form, existing);
   setStatus("Saving control...");
   const { error } = await supabaseClient.from("controls").update(payload).eq("id", controlId);
   if (error) throw error;
   await loadAdminData();
   setStatus("Control saved.");
   renderAdmin();
+}
+
+async function saveFormationProfile(form) {
+  if (!isFormationSenior) return;
+  const values = formDataObject(form);
+  const userId = form.dataset.userId;
+  const existing = formationProfiles.find((profile) => profile.user_id === userId);
+  if (!existing || existing.unit !== formationSeniorUnit) throw new Error("User is not in your unit.");
+  const payload = {
+    contact_email: String(values.contact_email || "").trim(),
+    name: values.name || "",
+    rank: values.rank || "",
+    service_number: values.service_number || "",
+    unit: formationSeniorUnit,
+    capbadge: values.capbadge || "",
+    qualification: values.qualification || "",
+    initial_qualification_date: nullableDate(values.initial_qualification_date),
+    pms_training_date: nullableDate(values.pms_training_date),
+    pms_proficiency_date: nullableDate(values.pms_proficiency_date),
+    annual_evaluation_date: nullableDate(values.annual_evaluation_date),
+    evaluation_waiver_number: values.evaluation_waiver_number || "",
+    updated_at: new Date().toISOString()
+  };
+  setStatus("Saving unit user...");
+  const { error } = await supabaseClient
+    .from("profiles")
+    .update(payload)
+    .eq("user_id", userId)
+    .eq("unit", formationSeniorUnit);
+  if (error) throw error;
+  await loadFormationSeniorData();
+  setStatus("Unit user saved.");
+  renderFormationSenior();
+}
+
+async function saveFormationControl(form) {
+  if (!isFormationSenior) return;
+  const controlId = form.dataset.controlId;
+  const existing = formationControls.find((control) => control.id === controlId);
+  if (!existing) throw new Error("Control not found.");
+  const owner = formationProfiles.find((profile) => profile.user_id === existing.user_id);
+  if (!owner || owner.unit !== formationSeniorUnit) throw new Error("Control is not in your unit.");
+  const payload = controlPayloadFromForm(form, existing);
+  setStatus("Saving unit control...");
+  const { error } = await supabaseClient.from("controls").update(payload).eq("id", controlId);
+  if (error) throw error;
+  await loadFormationSeniorData();
+  setStatus("Unit control saved.");
+  renderFormationSenior();
+}
+
+async function deleteFormationControl(id) {
+  if (!isFormationSenior) return;
+  const existing = formationControls.find((control) => control.id === id);
+  if (!existing) throw new Error("Control not found.");
+  const owner = formationProfiles.find((profile) => profile.user_id === existing.user_id);
+  if (!owner || owner.unit !== formationSeniorUnit) throw new Error("Control is not in your unit.");
+  setStatus("Deleting unit control...");
+  const { error } = await supabaseClient.from("controls").delete().eq("id", id);
+  if (error) throw error;
+  await loadFormationSeniorData();
+  setStatus("Unit control deleted.");
+  renderFormationSenior();
 }
 
 async function deleteAdminControl(id) {
@@ -1756,8 +1968,17 @@ document.addEventListener("click", async (event) => {
     renderAdmin();
     return;
   }
+  if (target.dataset.action === "formationSelectUser") {
+    selectedFormationUserId = target.dataset.id || "";
+    renderFormationSenior();
+    return;
+  }
   if (target.dataset.action === "adminDeleteControl" && confirm("Delete this control?")) {
     await deleteAdminControl(target.dataset.id).catch((error) => setStatus(error.message || "Unable to delete control."));
+    return;
+  }
+  if (target.dataset.action === "formationDeleteControl" && confirm("Delete this unit control?")) {
+    await deleteFormationControl(target.dataset.id).catch((error) => setStatus(error.message || "Unable to delete unit control."));
     return;
   }
   if (target.dataset.action === "adminRejectRequest" && confirm("Reject this account request?")) {
@@ -1821,9 +2042,19 @@ document.addEventListener("submit", async (event) => {
     await saveAdminProfile(event.target).catch((error) => setStatus(error.message || "Unable to save user."));
     return;
   }
+  if (event.target.classList.contains("formation-profile-form")) {
+    event.preventDefault();
+    await saveFormationProfile(event.target).catch((error) => setStatus(error.message || "Unable to save unit user."));
+    return;
+  }
   if (event.target.classList.contains("admin-control-form")) {
     event.preventDefault();
     await saveAdminControl(event.target).catch((error) => setStatus(error.message || "Unable to save control."));
+    return;
+  }
+  if (event.target.classList.contains("formation-control-form")) {
+    event.preventDefault();
+    await saveFormationControl(event.target).catch((error) => setStatus(error.message || "Unable to save unit control."));
     return;
   }
   if (event.target.id !== "authForm") return;
