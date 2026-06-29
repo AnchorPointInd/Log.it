@@ -430,6 +430,19 @@ function isValidAuthIdentifier(value) {
   return identifier.includes("@") || /^[a-z0-9][a-z0-9._-]{0,62}$/.test(identifier);
 }
 
+function authIdentifierValidationMessage(value, { allowEmail = true } = {}) {
+  const identifier = normalizeAuthIdentifier(value);
+  if (!identifier) return "Enter a username.";
+  if (/\s/.test(identifier)) return "Usernames cannot contain spaces. Use letters, numbers, dots, hyphens or underscores.";
+  if (!allowEmail && identifier.includes("@")) return "Enter a username, not an email address.";
+  if (identifier.includes("@")) return "";
+  if (!/^[a-z0-9]/.test(identifier)) return "Usernames must start with a letter or number.";
+  if (!/^[a-z0-9][a-z0-9._-]{0,62}$/.test(identifier)) {
+    return "Use only letters, numbers, dots, hyphens or underscores for username.";
+  }
+  return "";
+}
+
 function isValidContactEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
@@ -1178,6 +1191,8 @@ async function createAdminAccount(form) {
   if (!isAdmin) return;
   const values = formDataObject(form);
   const requestId = form.dataset.requestId || null;
+  const usernameError = authIdentifierValidationMessage(values.username || "", { allowEmail: false });
+  if (usernameError) throw new Error(usernameError);
   if (!isValidContactEmail(values.contactEmail || "")) throw new Error("Enter a valid email address.");
   if (form.elements.formationSeniorRequested?.checked && !values.unit) throw new Error("Set a unit before granting formation senior access.");
   setStatus(requestId ? "Approving account request..." : "Creating account...");
@@ -1241,8 +1256,9 @@ async function rejectAccountRequest(id) {
 async function requestAccount(form) {
   const values = formDataObject(form);
   const username = normalizeAuthIdentifier(values.username || "");
-  if (!isValidAuthIdentifier(username) || username.includes("@")) {
-    setStatus("Use letters, numbers, dots, hyphens or underscores for username.");
+  const usernameError = authIdentifierValidationMessage(username, { allowEmail: false });
+  if (usernameError) {
+    setStatus(usernameError);
     return;
   }
   const contactEmail = String(values.contactEmail || "").trim();
@@ -2081,8 +2097,9 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id !== "authForm") return;
   event.preventDefault();
   const identifier = normalizeAuthIdentifier($("#authEmail").value);
-  if (!isValidAuthIdentifier(identifier)) {
-    setStatus("Use letters, numbers, dots, hyphens or underscores for username.");
+  const identifierError = authIdentifierValidationMessage(identifier);
+  if (identifierError) {
+    setStatus(identifierError);
     return;
   }
   if (!hasValidInternalAuthDomain()) {
